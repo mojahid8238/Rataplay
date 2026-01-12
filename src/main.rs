@@ -84,7 +84,10 @@ async fn main() -> Result<()> {
         }
 
         // Handle pending actions (Playback)
-        if let Some((action, url)) = app.pending_action.take() {
+        if let Some((action, url, title)) = app.pending_action.take() {
+            // Kill previous playback if any
+            app.stop_playback();
+
             let in_terminal = matches!(action, AppAction::WatchInTerminal);
 
             // Suspend TUI only if needed
@@ -98,38 +101,119 @@ async fn main() -> Result<()> {
                 terminal.show_cursor()?;
             }
 
-            let full_url = if url.starts_with("http") {
-                url.clone()
-            } else {
-                format!("https://youtu.be/{}", url)
-            };
+            let full_url = url.clone();
 
             match action {
                 AppAction::WatchInTerminal => {
-                    println!("Playing in terminal: {}", full_url);
-                    if let Err(e) = sys::process::play_video(&full_url.to_string(), true) {
-                        eprintln!("Error playing video: {}", e);
-                        std::thread::sleep(Duration::from_secs(3));
+                    if let Ok(mut child) = sys::process::play_video(&full_url.to_string(), true) {
+                        let _ = child.wait().await;
                     }
                 }
                 AppAction::WatchExternal => {
-                    println!("Playing externally: {}", full_url);
-                    // Spawn in a separate thread to not block the UI
-                    std::thread::spawn(move || {
-                        let _ = sys::process::play_video(&full_url.to_string(), false);
-                    });
+                    match sys::process::play_video(&full_url.to_string(), false) {
+                        Ok(child) => {
+                            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                            let (res_tx, res_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                            app.playback_res_rx = res_rx;
+
+                            let socket_path = format!("/tmp/vivid-mpv-{}.sock", std::process::id());
+
+                            tokio::spawn(async move {
+                                use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+                                // Wait a bit for mpv to create the socket
+                                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+                                if let Ok(stream) =
+                                    tokio::net::UnixStream::connect(&socket_path).await
+                                {
+                                    let (reader, mut writer) = stream.into_split();
+                                    let mut reader = BufReader::new(reader);
+
+                                    // Spawning reader task
+                                    let reader_handle = tokio::spawn(async move {
+                                        let mut line = String::new();
+                                        while let Ok(n) = reader.read_line(&mut line).await {
+                                            if n == 0 {
+                                                break;
+                                            }
+                                            let _ = res_tx.send(line.clone());
+                                            line.clear();
+                                        }
+                                    });
+
+                                    // Writer loop
+                                    while let Some(cmd) = rx.recv().await {
+                                        let _ = writer.write_all(cmd.as_bytes()).await;
+                                        let _ = writer.flush().await;
+                                    }
+                                    let _ = reader_handle.abort();
+                                }
+                                let _ = tokio::fs::remove_file(&socket_path).await;
+                            });
+
+                            app.playback_cmd_tx = Some(tx);
+                            app.playback_process = Some(child);
+                            app.playback_title = Some(title);
+                            app.status_message = Some("Playing externally...".to_string());
+                        }
+                        Err(e) => {
+                            app.status_message = Some(format!("Error playing video: {}", e));
+                        }
+                    }
                 }
                 AppAction::ListenAudio => {
-                    println!("Playing audio: {}", full_url);
-                    // Spawn in a separate thread
-                    std::thread::spawn(move || {
-                        let _ = sys::process::play_audio(&full_url.to_string());
-                    });
+                    match sys::process::play_audio(&full_url.to_string()) {
+                        Ok(child) => {
+                            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                            let (res_tx, res_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                            app.playback_res_rx = res_rx;
+
+                            let socket_path = format!("/tmp/vivid-mpv-{}.sock", std::process::id());
+
+                            tokio::spawn(async move {
+                                use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+                                // Wait a bit for mpv to create the socket
+                                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+                                if let Ok(stream) =
+                                    tokio::net::UnixStream::connect(&socket_path).await
+                                {
+                                    let (reader, mut writer) = stream.into_split();
+                                    let mut reader = BufReader::new(reader);
+
+                                    // Spawning reader task
+                                    let reader_handle = tokio::spawn(async move {
+                                        let mut line = String::new();
+                                        while let Ok(n) = reader.read_line(&mut line).await {
+                                            if n == 0 {
+                                                break;
+                                            }
+                                            let _ = res_tx.send(line.clone());
+                                            line.clear();
+                                        }
+                                    });
+
+                                    // Writer loop
+                                    while let Some(cmd) = rx.recv().await {
+                                        let _ = writer.write_all(cmd.as_bytes()).await;
+                                        let _ = writer.flush().await;
+                                    }
+                                    let _ = reader_handle.abort();
+                                }
+                                let _ = tokio::fs::remove_file(&socket_path).await;
+                            });
+
+                            app.playback_cmd_tx = Some(tx);
+                            app.playback_process = Some(child);
+                            app.playback_title = Some(title);
+                            app.status_message = Some("Playing audio...".to_string());
+                        }
+                        Err(e) => {
+                            app.status_message = Some(format!("Error playing audio: {}", e));
+                        }
+                    }
                 }
-                AppAction::Download => {
-                    // This is handled in the app logic by switching to FormatSelection
-                    // It shouldn't get here.
-                }
+                AppAction::Download => {}
             }
             if in_terminal {
                 // Resume TUI
@@ -162,6 +246,7 @@ async fn main() -> Result<()> {
         DisableMouseCapture
     )?;
     terminal.show_cursor()?;
+    app.stop_playback();
 
     Ok(())
 }

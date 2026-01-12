@@ -62,7 +62,7 @@ pub struct App {
 
     // Actions
     pub actions: Vec<Action>,
-    pub pending_action: Option<(AppAction, String)>,
+    pub pending_action: Option<(AppAction, String, String)>, // (Action, URL, Title)
 
     // Images
     pub image_tx: UnboundedSender<(String, String)>, // (ID, URL)
@@ -80,6 +80,17 @@ pub struct App {
     pub download_rx: UnboundedReceiver<crate::sys::download::DownloadProgress>,
     pub download_progress: Option<f32>,
     pub download_status: Option<String>,
+
+    // Playback
+    pub playback_process: Option<tokio::process::Child>,
+    pub playback_cmd_tx: Option<UnboundedSender<String>>,
+    pub playback_res_rx: UnboundedReceiver<String>,
+    pub playback_title: Option<String>,
+    pub playback_time: f64,
+    pub playback_total: f64,
+    pub playback_duration_str: Option<String>,
+    pub is_paused: bool,
+    pub is_finishing: bool,
 }
 
 impl App {
@@ -148,6 +159,8 @@ impl App {
             }
         });
 
+        let (_, playback_res_rx) = mpsc::unbounded_channel();
+
         Self {
             running: true,
             input_mode: InputMode::Normal,
@@ -172,6 +185,15 @@ impl App {
             download_rx,
             download_progress: None,
             download_status: None,
+            playback_process: None,
+            playback_cmd_tx: None,
+            playback_res_rx,
+            playback_title: None,
+            playback_time: 0.0,
+            playback_total: 0.0,
+            playback_duration_str: None,
+            is_paused: false,
+            is_finishing: false,
         }
     }
     fn get_available_actions() -> Vec<Action> {
@@ -205,6 +227,7 @@ impl App {
                     self.state = AppState::Results;
                     if !self.search_results.is_empty() {
                         self.selected_result_index = Some(0);
+                        self.request_image_for_selection();
                     }
                     self.status_message = Some("Search completed.".to_string());
                 }
@@ -273,6 +296,54 @@ impl App {
                 }
             }
         }
+
+        // Check if playback process finished
+        if let Some(ref mut child) = self.playback_process {
+            if let Ok(Some(_)) = child.try_wait() {
+                self.playback_process = None;
+                self.playback_cmd_tx = None;
+                self.playback_title = None;
+                self.playback_time = 0.0;
+                self.playback_total = 0.0;
+                self.playback_duration_str = None;
+                self.is_paused = false;
+                self.is_finishing = false;
+            }
+        }
+
+        // Process IPC responses for progress tracking
+        while let Ok(msg) = self.playback_res_rx.try_recv() {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&msg) {
+                if let Some(t) = val["data"].as_f64() {
+                    if val["request_id"].as_u64() == Some(1) {
+                        self.playback_time = t;
+                    } else if val["request_id"].as_u64() == Some(2) {
+                        self.playback_total = t;
+                    }
+                }
+            }
+        }
+
+        // Update progress string and finishing state
+        if self.playback_total > 0.0 {
+            let current = yt::format_duration(self.playback_time);
+            let total = yt::format_duration(self.playback_total);
+            self.playback_duration_str = Some(format!("{}/{}", current, total));
+
+            // Mark as finishing if within 2 seconds of end
+            self.is_finishing = self.playback_total - self.playback_time < 2.0;
+        }
+
+        // Trigger property requests if we are playing
+        if self.playback_cmd_tx.is_some() && !self.is_paused {
+            // Request time and duration
+            self.send_command(
+                "{\"command\": [\"get_property\", \"time-pos\"], \"request_id\": 1}\n",
+            );
+            self.send_command(
+                "{\"command\": [\"get_property\", \"duration\"], \"request_id\": 2}\n",
+            );
+        }
     }
 
     pub fn handle_key_event(&mut self, key: KeyEvent) {
@@ -310,7 +381,7 @@ impl App {
                                             // Start background download
                                             let _ = self
                                                 .download_tx
-                                                .send((video.id.clone(), fmt.format_id.clone()));
+                                                .send((video.url.clone(), fmt.format_id.clone()));
                                             self.state = AppState::Results;
                                             self.status_message =
                                                 Some("Download started...".to_string());
@@ -334,7 +405,7 @@ impl App {
                         if let Some(action) = self.actions.iter().find(|a| a.key == key.code) {
                             if let Some(idx) = self.selected_result_index {
                                 if let Some(video) = self.search_results.get(idx) {
-                                    let url = video.id.clone();
+                                    let url = video.url.clone();
                                     match action.action {
                                         AppAction::Download => {
                                             // Trigger Format Fetch
@@ -344,7 +415,8 @@ impl App {
                                                 Some("Fetching formats...".to_string());
                                         }
                                         _ => {
-                                            self.pending_action = Some((action.action, url));
+                                            self.pending_action =
+                                                Some((action.action, url, video.title.clone()));
                                             self.state = AppState::Results;
                                         }
                                     }
@@ -369,6 +441,24 @@ impl App {
                             if !self.search_results.is_empty() {
                                 self.state = AppState::ActionMenu;
                             }
+                        }
+                        KeyCode::Char('x') => {
+                            self.stop_playback();
+                        }
+                        KeyCode::Char('p') | KeyCode::Char(' ') => {
+                            self.toggle_pause();
+                        }
+                        KeyCode::Left => {
+                            self.seek(-5);
+                        }
+                        KeyCode::Right => {
+                            self.seek(5);
+                        }
+                        KeyCode::Char('[') => {
+                            self.seek(-30);
+                        }
+                        KeyCode::Char(']') => {
+                            self.seek(30);
                         }
                         _ => {}
                     },
@@ -447,5 +537,46 @@ impl App {
 
         // Send query to background task
         let _ = self.search_tx.send(self.search_query.clone());
+    }
+
+    pub fn stop_playback(&mut self) {
+        if let Some(mut child) = self.playback_process.take() {
+            let _ = child.start_kill();
+            self.playback_cmd_tx = None;
+            self.playback_title = None;
+            self.is_paused = false;
+            self.status_message = Some("Playback stopped.".to_string());
+        }
+    }
+
+    pub fn toggle_pause(&mut self) {
+        if self.playback_cmd_tx.is_some() {
+            self.is_paused = !self.is_paused;
+            // mpv IPC expects JSON: { "command": ["cycle", "pause"] }
+            self.send_command("{\"command\": [\"cycle\", \"pause\"]}\n");
+            self.status_message = Some(if self.is_paused {
+                "Paused".to_string()
+            } else {
+                "Resumed".to_string()
+            });
+        }
+    }
+
+    pub fn seek(&mut self, seconds: i32) {
+        if self.playback_cmd_tx.is_some() {
+            // mpv IPC: { "command": ["osd-msg-bar", "seek", seconds, "relative"] }
+            let cmd = format!(
+                "{{\"command\": [\"osd-msg-bar\", \"seek\", {}, \"relative\"]}}\n",
+                seconds
+            );
+            self.send_command(&cmd);
+            self.status_message = Some(format!("Seeked {}s", seconds));
+        }
+    }
+
+    fn send_command(&self, cmd: &str) {
+        if let Some(tx) = &self.playback_cmd_tx {
+            let _ = tx.send(cmd.to_string());
+        }
     }
 }

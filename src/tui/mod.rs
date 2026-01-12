@@ -15,20 +15,20 @@ const THEME_HIGHLIGHT: Color = Color::Rgb(255, 100, 200); // Pink/Magenta
 const THEME_BORDER: Color = Color::Rgb(80, 80, 120); // Muted blue-purple
 
 pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
-    let constraints = if app.download_progress.is_some() {
-        vec![
-            Constraint::Length(3), // Search bar
-            Constraint::Min(1),    // Main content
-            Constraint::Length(3), // Download Gauge (increased to 3 to handle borders)
-            Constraint::Length(3), // Status bar / Help
-        ]
-    } else {
-        vec![
-            Constraint::Length(3), // Search bar
-            Constraint::Min(1),    // Main content
-            Constraint::Length(3), // Status bar / Help
-        ]
-    };
+    let mut constraints = vec![
+        Constraint::Length(3), // Search bar
+        Constraint::Min(1),    // Main content
+    ];
+
+    if app.playback_title.is_some() {
+        constraints.push(Constraint::Length(3)); // Playback info
+    }
+
+    if app.download_progress.is_some() {
+        constraints.push(Constraint::Length(3)); // Download bar
+    }
+
+    constraints.push(Constraint::Length(3)); // Status bar
 
     let main_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -45,18 +45,23 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
     render_search_bar(f, app, main_layout[0]);
     render_main_area(f, app, main_layout[1], picker);
 
-    // Download or Status
+    let mut current_idx = 2;
+    if app.playback_title.is_some() {
+        render_playback_bar(f, app, main_layout[current_idx]);
+        current_idx += 1;
+    }
+
     if let Some(progress) = app.download_progress {
         render_download_gauge(
             f,
             progress,
             app.download_status.as_deref().unwrap_or("Downloading..."),
-            main_layout[2],
+            main_layout[current_idx],
         );
-        render_status_bar(f, app, main_layout[3]);
-    } else {
-        render_status_bar(f, app, main_layout[2]);
+        current_idx += 1;
     }
+
+    render_status_bar(f, app, main_layout[current_idx]);
 
     if app.state == AppState::ActionMenu {
         render_action_menu(f, app, main_layout[1]);
@@ -83,6 +88,80 @@ fn render_download_gauge(f: &mut Frame, progress: f32, status: &str, area: Rect)
         .ratio(progress.into())
         .use_unicode(true);
     f.render_widget(gauge, area);
+}
+
+fn render_playback_bar(f: &mut Frame, app: &App, area: Rect) {
+    let title = app.playback_title.as_deref().unwrap_or("Unknown");
+    let is_paused = app.is_paused;
+    let duration_str = app
+        .playback_duration_str
+        .as_deref()
+        .unwrap_or("00:00/00:00");
+
+    let status_str = if app.is_finishing {
+        " FINISHED "
+    } else if is_paused {
+        " PAUSED "
+    } else {
+        " PLAYING "
+    };
+    let status_color = if app.is_finishing {
+        Color::LightRed
+    } else if is_paused {
+        THEME_HIGHLIGHT
+    } else {
+        THEME_ACCENT
+    };
+
+    let p = Paragraph::new(Line::from(vec![
+        Span::styled(
+            status_str,
+            Style::default()
+                .fg(Color::Black)
+                .bg(status_color)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" "),
+        Span::styled(
+            format!("[{}] ", duration_str),
+            Style::default()
+                .fg(THEME_HIGHLIGHT)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            title,
+            Style::default().fg(THEME_FG).add_modifier(Modifier::ITALIC),
+        ),
+        Span::raw(" | "),
+        Span::styled(
+            "p",
+            Style::default()
+                .fg(THEME_HIGHLIGHT)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(": Play/Pause | "),
+        Span::styled(
+            "Arrows",
+            Style::default()
+                .fg(THEME_HIGHLIGHT)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(": Seek | "),
+        Span::styled(
+            "x",
+            Style::default()
+                .fg(THEME_HIGHLIGHT)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(": Stop"),
+    ]))
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().fg(THEME_ACCENT)),
+    );
+    f.render_widget(p, area);
 }
 
 fn render_format_selection(
@@ -137,7 +216,7 @@ fn render_format_selection(
 
 fn render_action_menu(f: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
-        .title(" Action Menu ")
+        .title(" Select Action ")
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .style(Style::default().bg(THEME_BG).fg(THEME_FG))
@@ -180,11 +259,10 @@ fn render_action_menu(f: &mut Frame, app: &App, area: Rect) {
     let mut state = ListState::default();
     // In a real app, you might want to manage the selected action index in App state
     // For now, we'll just show the list without a selection.
-    // state.select(Some(0)); 
+    // state.select(Some(0));
 
     f.render_stateful_widget(list, area, &mut state);
 }
-
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let popup_layout = Layout::default()
@@ -347,13 +425,12 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let key_hints = match app.input_mode {
-        InputMode::Normal => "q: Quit | /: Search | j/k: Nav | Enter: Select",
+        InputMode::Normal => "q: Quit | /: Search | j/k: Nav",
         InputMode::Editing => "Esc: Normal Mode | Enter: Search",
-        InputMode::Loading => "Please wait... (Searching)",
+        InputMode::Loading => "Please wait...",
     };
 
-    let msg = app.status_message.as_deref().unwrap_or("");
-    let text = format!(" [{}] {} | {} ", mode_str, key_hints, msg);
+    let text = format!(" [{}] {} ", mode_str, key_hints);
 
     let p = Paragraph::new(text)
         .block(

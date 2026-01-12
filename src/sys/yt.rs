@@ -1,13 +1,13 @@
-use std::process::Stdio;
-use anyhow::{Result, Context};
-use tokio::process::Command;
 use crate::model::{Video, VideoFormat};
+use anyhow::{Context, Result};
 use serde_json::Value;
+use std::process::Stdio;
+use tokio::process::Command;
 
 pub async fn search_videos(query: &str) -> Result<Vec<Video>> {
     // Decide if it's a URL or a Search
     let is_url = query.starts_with("http://") || query.starts_with("https://");
-    
+
     let args = if is_url {
         // If it's a URL, just get that single video's info
         vec!["--dump-json", "--no-playlist", query]
@@ -17,8 +17,9 @@ pub async fn search_videos(query: &str) -> Result<Vec<Video>> {
         vec![
             "--dump-json",
             "--no-playlist",
-            "--default-search", "ytsearch15",
-            query
+            "--default-search",
+            "ytsearch15",
+            query,
         ]
     };
 
@@ -32,8 +33,8 @@ pub async fn search_videos(query: &str) -> Result<Vec<Video>> {
         .await?;
 
     if !output.status.success() {
-         let err = String::from_utf8_lossy(&output.stderr);
-         anyhow::bail!("yt-dlp error: {}", err);
+        let err = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("yt-dlp error: {}", err);
     }
 
     let stdout = String::from_utf8(output.stdout)?;
@@ -41,12 +42,15 @@ pub async fn search_videos(query: &str) -> Result<Vec<Video>> {
 
     // yt-dlp --dump-json prints one JSON object per line
     for line in stdout.lines() {
-        if line.trim().is_empty() { continue; }
-        
+        if line.trim().is_empty() {
+            continue;
+        }
+
         if let Ok(val) = serde_json::from_str::<Value>(line) {
             let id = val["id"].as_str().unwrap_or_default().to_string();
             let title = val["title"].as_str().unwrap_or_default().to_string();
             let channel = val["uploader"].as_str().unwrap_or("Unknown").to_string();
+            let url = val["webpage_url"].as_str().unwrap_or_default().to_string();
             let duration = val["duration"].as_f64().unwrap_or(0.0);
             let thumbnail = val["thumbnail"].as_str().map(|s| s.to_string());
             let view_count = val["view_count"].as_u64();
@@ -58,6 +62,7 @@ pub async fn search_videos(query: &str) -> Result<Vec<Video>> {
                 id,
                 title,
                 channel,
+                url,
                 duration_string,
                 thumbnail_url: thumbnail,
                 view_count,
@@ -88,7 +93,7 @@ pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
     let stdout = String::from_utf8(output.stdout)?;
     // output is one JSON object
     let val: Value = serde_json::from_str(&stdout).context("Failed to parse yt-dlp JSON")?;
-    
+
     let mut formats = Vec::new();
     if let Some(list) = val["formats"].as_array() {
         for f in list {
@@ -97,7 +102,7 @@ pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
             let resolution = f["resolution"].as_str().unwrap_or("unknown").to_string();
             let format_note = f["format_note"].as_str().unwrap_or("").to_string();
             let filesize = f["filesize"].as_u64().or(f["filesize_approx"].as_u64());
-            
+
             formats.push(VideoFormat {
                 format_id,
                 ext,
@@ -110,11 +115,11 @@ pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
     // Reverse to show best quality first effectively? Or just let user sort.
     // Usually yt-dlp sorts by worst to best.
     formats.reverse();
-    
+
     Ok(formats)
 }
 
-fn format_duration(seconds: f64) -> String {
+pub fn format_duration(seconds: f64) -> String {
     let seconds = seconds as u64;
     let h = seconds / 3600;
     let m = (seconds % 3600) / 60;
