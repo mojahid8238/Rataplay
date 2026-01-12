@@ -1,0 +1,19 @@
+[package]
+name = "Vivid"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { version = "1.43.0", features = ["full"] }
+ratatui = "0.30.0"
+crossterm = "0.28.1"
+# ratatui-image 1.x is compatible with ratatui 0.29
+ratatui-image = "1.0.0" 
+image = "0.25.5" # Underlying image crate for ratatui-image
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.134"
+anyhow = "1.0.95"
+clap = { version = "4.5.24", features = ["derive"] }
+reqwest = { version = "0.12.12", features = ["json"] } # For any future http needs, though we rely mostly on yt-dlp
+regex = "1.11.1" # For parsing versions etc
+chrono = "0.4.39" # For date comparison (yt-dlp version check)
