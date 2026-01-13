@@ -106,13 +106,50 @@ pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
     let val: Value = serde_json::from_str(&stdout).context("Failed to parse yt-dlp JSON")?;
 
     let mut formats = Vec::new();
+    let duration = val["duration"].as_f64();
+
     if let Some(list) = val["formats"].as_array() {
         for f in list {
             let format_id = f["format_id"].as_str().unwrap_or("").to_string();
             let ext = f["ext"].as_str().unwrap_or("").to_string();
-            let resolution = f["resolution"].as_str().unwrap_or("unknown").to_string();
+            let vcodec = f["vcodec"].as_str().unwrap_or("none");
+            let acodec = f["acodec"].as_str().unwrap_or("none");
+
+            // Skip storyboards, images, and data-only formats
+            if (vcodec == "none" && acodec == "none")
+                || ext == "mhtml"
+                || format_id.contains("storyboard")
+            {
+                continue;
+            }
+
+            let mut resolution = f["resolution"].as_str().unwrap_or("unknown").to_string();
+
+            // If vcodec is none, it's definitely audio only
+            if vcodec == "none" {
+                resolution = "audio only".to_string();
+            }
+
             let format_note = f["format_note"].as_str().unwrap_or("").to_string();
-            let filesize = f["filesize"].as_u64().or(f["filesize_approx"].as_u64());
+
+            // Skip formats that have no resolution and no note (often redundant metadata)
+            if resolution == "unknown" && format_note.is_empty() {
+                continue;
+            }
+
+            // Try multiple ways to get filesize
+            let mut filesize = f["filesize"]
+                .as_u64()
+                .or_else(|| f["filesize_approx"].as_u64())
+                .or_else(|| f["filesize"].as_f64().map(|v| v as u64))
+                .or_else(|| f["filesize_approx"].as_f64().map(|v| v as u64));
+
+            // If still no filesize, try to estimate from bitrate (tbr) and duration
+            if filesize.is_none() {
+                if let (Some(tbr), Some(dur)) = (f["tbr"].as_f64(), duration) {
+                    filesize = Some(((tbr * 1000.0 / 8.0) * dur) as u64);
+                }
+            }
 
             formats.push(VideoFormat {
                 format_id,
@@ -123,7 +160,31 @@ pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
             });
         }
     }
-    formats.reverse();
+
+    // Sort: Videos first (highest resolution), then audio only
+    formats.sort_by(|a, b| {
+        let a_is_audio = a.resolution == "audio only" || a.note.contains("audio only");
+        let b_is_audio = b.resolution == "audio only" || b.note.contains("audio only");
+
+        if a_is_audio && !b_is_audio {
+            std::cmp::Ordering::Greater
+        } else if !a_is_audio && b_is_audio {
+            std::cmp::Ordering::Less
+        } else if !a_is_audio && !b_is_audio {
+            // Both are videos, sort by resolution (height)
+            let get_height = |res: &str| {
+                res.split('x')
+                    .last()
+                    .and_then(|s| s.parse::<u32>().ok())
+                    .unwrap_or(0)
+            };
+            get_height(b.resolution.as_str()).cmp(&get_height(a.resolution.as_str()))
+        } else {
+            // Both are audio, sort by filesize/bitrate (filesize as proxy)
+            b.filesize.cmp(&a.filesize)
+        }
+    });
+
     Ok(formats)
 }
 
