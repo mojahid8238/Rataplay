@@ -28,6 +28,10 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
         constraints.push(Constraint::Length(3)); // Download bar
     }
 
+    if app.search_progress.is_some() {
+        constraints.push(Constraint::Length(3)); // Search bar progress
+    }
+
     constraints.push(Constraint::Length(3)); // Status bar
 
     let main_layout = Layout::default()
@@ -58,6 +62,11 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
             app.download_status.as_deref().unwrap_or("Downloading..."),
             main_layout[current_idx],
         );
+        current_idx += 1;
+    }
+
+    if let Some(progress) = app.search_progress {
+        render_download_gauge(f, progress, "Searching...", main_layout[current_idx]);
         current_idx += 1;
     }
 
@@ -321,28 +330,62 @@ fn render_search_bar(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picker) {
+    if app.search_results.is_empty() && !app.is_searching {
+        render_greeting_section(f, area);
+        return;
+    }
+
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+        .constraints([Constraint::Percentage(45), Constraint::Percentage(55)].as_ref())
         .split(area);
 
     // Left: Results List
-    let items: Vec<ListItem> = app
+    let mut items: Vec<ListItem> = app
         .search_results
         .iter()
-        .map(|v| {
-            let content = vec![Line::from(vec![
-                Span::styled(&v.title, Style::default().add_modifier(Modifier::BOLD)),
-                Span::raw(format!(" ({})", v.duration_string)),
-            ])];
-            ListItem::new(content)
+        .enumerate()
+        .map(|(i, v)| {
+            let lines = vec![
+                Line::from(vec![
+                    Span::styled(format!("{:02}. ", i + 1), Style::default().fg(THEME_BORDER)),
+                    Span::styled(
+                        &v.title,
+                        Style::default().add_modifier(Modifier::BOLD).fg(THEME_FG),
+                    ),
+                ]),
+                Line::from(vec![
+                    Span::raw("    "),
+                    Span::styled(&v.channel, Style::default().fg(THEME_ACCENT)),
+                    Span::styled(
+                        format!("  •  {}", v.duration_string),
+                        Style::default().fg(Color::DarkGray),
+                    ),
+                ]),
+            ];
+            ListItem::new(lines).style(Style::default().fg(THEME_FG))
         })
         .collect();
+
+    if !app.search_results.is_empty() {
+        items.push(ListItem::new(vec![
+            Line::from(""),
+            Line::from(vec![
+                Span::raw("    "),
+                Span::styled(
+                    " [ Load More Results... ] ",
+                    Style::default()
+                        .fg(THEME_HIGHLIGHT)
+                        .add_modifier(Modifier::BOLD),
+                ),
+            ]),
+            Line::from(""),
+        ]));
+    }
 
     let list = List::new(items)
         .block(
             Block::default()
-                .borders(Borders::ALL)
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(THEME_BORDER))
@@ -350,11 +393,10 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
         )
         .highlight_style(
             Style::default()
-                .bg(THEME_HIGHLIGHT)
-                .fg(Color::Black)
+                .bg(Color::Rgb(40, 40, 50))
                 .add_modifier(Modifier::BOLD),
         )
-        .highlight_symbol(">> ");
+        .highlight_symbol(Span::styled(">> ", Style::default().fg(THEME_HIGHLIGHT)));
 
     let mut state = ListState::default();
     state.select(app.selected_result_index);
@@ -372,48 +414,192 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
     f.render_widget(details_block, chunks[1]);
 
     if let Some(idx) = app.selected_result_index {
-        if let Some(video) = app.search_results.get(idx) {
-            // Check for image
-            if let Some(img) = app.image_cache.get(&video.id) {
-                // Render image
-                // We split inner area: Top for image, Bottom for text
-                let layout = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Percentage(60), Constraint::Percentage(40)].as_ref())
-                    .split(inner_area);
+        if idx < app.search_results.len() {
+            if let Some(video) = app.search_results.get(idx) {
+                // Check for image
+                if let Some(img) = app.image_cache.get(&video.id) {
+                    // Render image
+                    let layout = Layout::default()
+                        .direction(Direction::Vertical)
+                        .constraints(
+                            [
+                                Constraint::Percentage(60),
+                                Constraint::Length(1), // Spacer
+                                Constraint::Percentage(40),
+                            ]
+                            .as_ref(),
+                        )
+                        .split(inner_area);
 
-                // If resize fails or protocol fails, we just don't render or it renders empty/block
-                let mut protocol = picker.new_resize_protocol(img.clone());
-                let image = ratatui_image::StatefulImage::new(None);
-                f.render_stateful_widget(image, layout[0], &mut protocol);
+                    // If resize fails or protocol fails, we just don't render or it renders empty/block
+                    let mut protocol = picker.new_resize_protocol(img.clone());
+                    let image = ratatui_image::StatefulImage::new(None);
+                    f.render_stateful_widget(image, layout[0], &mut protocol);
 
-                let text = format!(
-                    "Title: {}\nChannel: {}\nDuration: {}\nViews: {}\nUploaded: {}",
-                    video.title,
-                    video.channel,
-                    video.duration_string,
-                    video.view_count.unwrap_or(0),
-                    video.upload_date.as_deref().unwrap_or("Unknown")
-                );
-                let p = Paragraph::new(text);
-                f.render_widget(p, layout[1]);
-            } else {
-                // No image yet
-                let text = format!(
-                    "Title: {}\nChannel: {}\nDuration: {}\nViews: {}\nUploaded: {}\n\n(Loading Thumbnail...)",
-                    video.title,
-                    video.channel,
-                    video.duration_string,
-                    video.view_count.unwrap_or(0),
-                    video.upload_date.as_deref().unwrap_or("Unknown")
-                );
-                let p = Paragraph::new(text);
-                f.render_widget(p, inner_area);
+                    let views = video.view_count.unwrap_or(0);
+                    let views_fmt = if views > 1_000_000 {
+                        format!("{:.1}M", views as f64 / 1_000_000.0)
+                    } else if views > 1_000 {
+                        format!("{:.1}K", views as f64 / 1_000.0)
+                    } else {
+                        views.to_string()
+                    };
+
+                    let upload_date = format_upload_date(video.upload_date.as_deref());
+
+                    let text = vec![
+                        Line::from(vec![
+                            Span::styled(
+                                "Title: ",
+                                Style::default()
+                                    .fg(THEME_ACCENT)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled(&video.title, Style::default().fg(THEME_FG)),
+                        ]),
+                        Line::from(vec![
+                            Span::styled(
+                                "Channel: ",
+                                Style::default()
+                                    .fg(THEME_ACCENT)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled(&video.channel, Style::default().fg(THEME_FG)),
+                        ]),
+                        Line::from(vec![
+                            Span::styled(
+                                "Duration: ",
+                                Style::default()
+                                    .fg(THEME_ACCENT)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled(&video.duration_string, Style::default().fg(THEME_FG)),
+                        ]),
+                        Line::from(vec![
+                            Span::styled(
+                                "Views: ",
+                                Style::default()
+                                    .fg(THEME_ACCENT)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled(views_fmt, Style::default().fg(THEME_FG)),
+                        ]),
+                        Line::from(vec![
+                            Span::styled(
+                                "Uploaded: ",
+                                Style::default()
+                                    .fg(THEME_ACCENT)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled(upload_date, Style::default().fg(THEME_FG)),
+                        ]),
+                    ];
+                    let p = Paragraph::new(text).block(Block::default().borders(Borders::NONE));
+                    f.render_widget(p, layout[2]);
+                } else {
+                    // No image yet
+                    let text = format!(
+                        "Title: {}\nChannel: {}\nDuration: {}\nViews: {}\nUploaded: {}\n\n(Loading Thumbnail...)",
+                        video.title,
+                        video.channel,
+                        video.duration_string,
+                        video.view_count.unwrap_or(0),
+                        format_upload_date(video.upload_date.as_deref())
+                    );
+                    let p = Paragraph::new(text);
+                    f.render_widget(p, inner_area);
+                }
             }
+        } else {
+            // Load More selected
+            let text = "\n\n  Press ENTER to load 20 more results...";
+            let p = Paragraph::new(text).style(Style::default().fg(THEME_ACCENT));
+            f.render_widget(p, inner_area);
         }
     } else {
         let p = Paragraph::new("No video selected");
         f.render_widget(p, inner_area);
+    }
+}
+
+fn render_greeting_section(f: &mut Frame, area: Rect) {
+    let area = centered_rect(60, 40, area);
+    let text = vec![
+        Line::from(vec![
+            Span::styled(
+                "V",
+                Style::default()
+                    .fg(THEME_HIGHLIGHT)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "ivid",
+                Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Search for videos or paste a URL.",
+            Style::default().fg(THEME_ACCENT),
+        )]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("Press ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                "/",
+                Style::default()
+                    .fg(THEME_HIGHLIGHT)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                " to focus search bar.",
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("Press ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                "Enter",
+                Style::default()
+                    .fg(THEME_HIGHLIGHT)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                " to browse and see actions.",
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]),
+    ];
+    let p = Paragraph::new(text)
+        .alignment(ratatui::layout::Alignment::Center)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_type(BorderType::Rounded)
+                .border_style(Style::default().fg(THEME_BORDER)),
+        );
+    f.render_widget(p, area);
+}
+
+fn format_upload_date(raw: Option<&str>) -> String {
+    if let Some(date) = raw {
+        if date.len() == 8 {
+            let y = &date[0..4];
+            let m = &date[4..6];
+            let d = &date[6..8];
+            let months = [
+                "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+            ];
+            if let Ok(m_idx) = m.parse::<usize>() {
+                if m_idx >= 1 && m_idx <= 12 {
+                    return format!("{} {}, {}", months[m_idx - 1], d, y);
+                }
+            }
+            return format!("{}-{}-{}", y, m, d);
+        }
+        date.to_string()
+    } else {
+        "Unknown".to_string()
     }
 }
 
@@ -425,7 +611,7 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let key_hints = match app.input_mode {
-        InputMode::Normal => "q: Quit | /: Search | j/k: Nav",
+        InputMode::Normal => "q: Quit | /: Search | j/k: Nav | Enter: Open",
         InputMode::Editing => "Esc: Normal Mode | Enter: Search",
         InputMode::Loading => "Please wait...",
     };

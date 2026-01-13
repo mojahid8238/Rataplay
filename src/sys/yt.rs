@@ -4,49 +4,53 @@ use serde_json::Value;
 use std::process::Stdio;
 use tokio::process::Command;
 
-pub async fn search_videos(query: &str) -> Result<Vec<Video>> {
-    // Decide if it's a URL or a Search
+pub enum SearchResult {
+    Video(Video),
+    Progress(f32),
+}
+
+pub async fn search_videos(
+    query: &str,
+    start: u32,
+    end: u32,
+    tx: tokio::sync::mpsc::UnboundedSender<Result<SearchResult, String>>,
+) -> Result<()> {
     let is_url = query.starts_with("http://") || query.starts_with("https://");
+    let start_str = start.to_string();
+    let search_query = if is_url {
+        query.to_string()
+    } else {
+        format!("ytsearch{}:{}", end, query)
+    };
 
     let args = if is_url {
         // If it's a URL, just get that single video's info
-        vec!["--dump-json", "--no-playlist", query]
+        vec!["--dump-json", "--no-playlist", &search_query]
     } else {
-        // If search, get top 15 results
-        // "ytsearch15:<query>"
-        vec![
-            "--dump-json",
-            "--no-playlist",
-            "--default-search",
-            "ytsearch15",
-            query,
-        ]
+        // If search, get results in the specified range
+        vec!["--dump-json", "--playlist-start", &start_str, &search_query]
     };
 
-    let output = Command::new("yt-dlp")
+    let mut child = Command::new("yt-dlp")
         .args(&args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped()) // Hide stderr unless error
+        .stderr(Stdio::piped())
         .spawn()
-        .context("Failed to spawn yt-dlp")?
-        .wait_with_output()
-        .await?;
+        .context("Failed to spawn yt-dlp")?;
 
-    if !output.status.success() {
-        let err = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("yt-dlp error: {}", err);
-    }
+    let stdout = child.stdout.take().context("Failed to take stdout")?;
+    let mut reader = tokio::io::BufReader::new(stdout);
+    let mut lines = tokio::io::AsyncBufReadExt::lines(&mut reader);
 
-    let stdout = String::from_utf8(output.stdout)?;
-    let mut videos = Vec::new();
+    let mut count = 0;
+    let expected = if is_url { 1 } else { end - start + 1 };
 
-    // yt-dlp --dump-json prints one JSON object per line
-    for line in stdout.lines() {
+    while let Some(line) = lines.next_line().await? {
         if line.trim().is_empty() {
             continue;
         }
 
-        if let Ok(val) = serde_json::from_str::<Value>(line) {
+        if let Ok(val) = serde_json::from_str::<Value>(&line) {
             let id = val["id"].as_str().unwrap_or_default().to_string();
             let title = val["title"].as_str().unwrap_or_default().to_string();
             let channel = val["uploader"].as_str().unwrap_or("Unknown").to_string();
@@ -58,7 +62,7 @@ pub async fn search_videos(query: &str) -> Result<Vec<Video>> {
 
             let duration_string = format_duration(duration);
 
-            videos.push(Video {
+            let video = Video {
                 id,
                 title,
                 channel,
@@ -67,11 +71,18 @@ pub async fn search_videos(query: &str) -> Result<Vec<Video>> {
                 thumbnail_url: thumbnail,
                 view_count,
                 upload_date,
-            });
+            };
+
+            count += 1;
+            let progress = (count as f32 / expected as f32).min(1.0);
+            let _ = tx.send(Ok(SearchResult::Video(video)));
+            let _ = tx.send(Ok(SearchResult::Progress(progress)));
         }
     }
 
-    Ok(videos)
+    let _ = child.wait().await;
+    let _ = tx.send(Ok(SearchResult::Progress(1.0)));
+    Ok(())
 }
 
 pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
@@ -112,10 +123,7 @@ pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
             });
         }
     }
-    // Reverse to show best quality first effectively? Or just let user sort.
-    // Usually yt-dlp sorts by worst to best.
     formats.reverse();
-
     Ok(formats)
 }
 

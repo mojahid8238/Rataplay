@@ -7,11 +7,12 @@ use anyhow::Result;
 use app::{App, AppAction};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event},
+    event::{DisableBracketedPaste, EnableBracketedPaste},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
-use ratatui_image::picker::Picker;
+use ratatui_image::picker::{Picker, ProtocolType};
 use std::process::exit;
 use std::{
     io,
@@ -24,24 +25,76 @@ async fn main() -> Result<()> {
 
     match sys::deps::check_dependencies() {
         Ok(status) => {
-            println!("yt-dlp version: {}", status.yt_dlp_version);
-            if !status.yt_dlp_up_to_date {
-                println!("WARNING: Your yt-dlp version is older than 14 days. Search might fail.");
-                println!("Recommendation: Run 'yt-dlp -U' to update.");
-                // We don't exit here, just warn, as per requirements ("suggest an update")
-            }
+            // Run the update command to fetch live version info
+            let update_check = std::process::Command::new("yt-dlp").arg("-U").output();
 
+            match update_check {
+                Ok(output) => {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+
+                    let mut current_version: Option<String> = None;
+                    let mut latest_version: Option<String> = None;
+
+                    for line in stdout.lines() {
+                        if line.contains("Current version:") {
+                            current_version = line.split("Current version: ").nth(1)
+                                .and_then(|s| s.split(" ").next())
+                                .map(|s| s.to_string());
+                        } else if line.contains("Latest version:") {
+                            latest_version = line.split("Latest version: ").nth(1)
+                                .and_then(|s| s.split(" ").next())
+                                .map(|s| s.to_string());
+                        }
+                    }
+
+                    if let (Some(current), Some(latest)) = (current_version, latest_version) {
+                        if current < latest {
+                            println!("⚠️  UPDATE REQUIRED: You are behind the latest yt-dlp release.");
+                            println!("--------------------------------------------------");
+                            println!("🚀 Latest version: {}", latest);
+                            println!("--------------------------------------------------");
+                            println!("CRITICAL: You must update to ensure search and playback features work.");
+                            println!(
+                                "yt-dlp extractors change daily; being behind may cause failures."
+                            );
+                        } else {
+                            println!(
+                                "✅ yt-dlp is up to date (Version: {})",
+                                status.yt_dlp_version
+                            );
+                        }
+                    } else if stdout.contains("is up to date") {
+                        // Fallback for when `yt-dlp -U` output differs but still indicates up to date
+                        println!(
+                            "✅ yt-dlp is up to date (Version: {})",
+                            status.yt_dlp_version
+                        );
+                    }
+                    else {
+                        // Fallback for unexpected output or permission errors
+                        println!("yt-dlp version: {}", status.yt_dlp_version);
+                        println!(
+                            "⚠️  Could not verify update status. Please run 'yt-dlp -U' manually."
+                        );
+                    }
+                }
+                Err(_) => {
+                    // Fallback for when the command fails to execute (e.g., no internet or binary missing)
+                    println!("yt-dlp version: {}", status.yt_dlp_version);
+                    println!("❌ WARNING: Unable to check for updates. Please ensure you are on the latest version");
+                    println!("   to prevent search and download features from breaking.");
+                }
+            }
+            // Secondary dependency checks
             if !status.mpv_installed {
                 eprintln!("CRITICAL: mpv is not installed or not in PATH.");
                 eprintln!("Vivid requires mpv for playback.");
                 exit(1);
             }
-
-            println!("Environment check passed.");
         }
         Err(e) => {
             eprintln!("Dependency check failed: {}", e);
-            exit(1);
+            std::process::exit(1);
         }
     }
 
@@ -50,18 +103,25 @@ async fn main() -> Result<()> {
     // Setup Terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(
+        stdout,
+        EnterAlternateScreen,
+        EnableMouseCapture,
+        EnableBracketedPaste
+    )?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Initialize Image Picker
-    // Try to detect, otherwise fallback.
-    let mut picker = Picker::from_termios().unwrap_or_else(|_| {
-        // Fallback to a font size of 8x16 roughly?
-        // Or create without guessing
-        Picker::new((8, 16))
-    });
-    // Guessing protocol might need manual intervention for Sixel, but from_termios tries hard.
+    // Initialize Image Picker with specialized detection for Kitty/WezTerm
+    let mut picker = Picker::from_termios().unwrap_or_else(|_| Picker::new((8, 16)));
+
+    // Explicitly check for Kitty/WezTerm to enable advanced graphics protocol
+    let term = std::env::var("TERM").unwrap_or_default();
+    let term_program = std::env::var("TERM_PROGRAM").unwrap_or_default();
+    if term == "xterm-kitty" || term_program == "WezTerm" {
+        // Force Kitty protocol if detected to avoid pixelation
+        picker.protocol_type = ProtocolType::Kitty;
+    }
 
     // Create App
     let mut app = App::new();
@@ -78,8 +138,10 @@ async fn main() -> Result<()> {
             .unwrap_or_else(|| Duration::from_secs(0));
 
         if crossterm::event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
-                app.handle_key_event(key);
+            match event::read()? {
+                Event::Key(key) => app.handle_key_event(key),
+                Event::Paste(text) => app.handle_paste(text),
+                _ => {}
             }
         }
 
@@ -243,7 +305,8 @@ async fn main() -> Result<()> {
     execute!(
         terminal.backend_mut(),
         LeaveAlternateScreen,
-        DisableMouseCapture
+        DisableMouseCapture,
+        DisableBracketedPaste
     )?;
     terminal.show_cursor()?;
     app.stop_playback();
