@@ -54,8 +54,14 @@ pub struct App {
     pub selected_result_index: Option<usize>,
 
     // Async Communication
-    pub search_tx: UnboundedSender<String>,
-    pub result_rx: UnboundedReceiver<Result<Vec<Video>, String>>,
+    pub search_tx: UnboundedSender<(String, u32, u32, usize)>, // query, start, end, search_id
+    pub result_rx: UnboundedReceiver<Result<(yt::SearchResult, usize), String>>,
+
+    // Search Progress
+    pub search_progress: Option<f32>,
+    pub search_offset: u32,
+    pub is_searching: bool,
+    pub current_search_id: usize,
 
     // Messages/Status
     pub status_message: Option<String>,
@@ -95,20 +101,36 @@ pub struct App {
 
 impl App {
     pub fn new() -> Self {
-        let (search_tx, mut search_rx) = mpsc::unbounded_channel::<String>();
-        let (result_tx, result_rx) = mpsc::unbounded_channel();
+        let (search_tx, mut search_rx) = mpsc::unbounded_channel::<(String, u32, u32, usize)>();
+        let (result_tx, result_rx) =
+            mpsc::unbounded_channel::<Result<(yt::SearchResult, usize), String>>();
 
         // Spawn a background task to handle search requests
         tokio::spawn(async move {
-            while let Some(query) = search_rx.recv().await {
-                match yt::search_videos(&query).await {
-                    Ok(videos) => {
-                        let _ = result_tx.send(Ok(videos));
+            while let Some((query, start, end, id)) = search_rx.recv().await {
+                let tx = result_tx.clone();
+                tokio::spawn(async move {
+                    let (item_tx, mut item_rx) = mpsc::unbounded_channel();
+
+                    let search_handle = tokio::spawn(async move {
+                        if let Err(e) = yt::search_videos(&query, start, end, item_tx.clone()).await
+                        {
+                            let _ = item_tx.send(Err(e.to_string()));
+                        }
+                    });
+
+                    while let Some(res) = item_rx.recv().await {
+                        match res {
+                            Ok(item) => {
+                                let _ = tx.send(Ok((item, id)));
+                            }
+                            Err(e) => {
+                                let _ = tx.send(Err(e));
+                            }
+                        }
                     }
-                    Err(e) => {
-                        let _ = result_tx.send(Err(e.to_string()));
-                    }
-                }
+                    let _ = search_handle.await;
+                });
             }
         });
 
@@ -163,7 +185,7 @@ impl App {
 
         Self {
             running: true,
-            input_mode: InputMode::Normal,
+            input_mode: InputMode::Editing,
             state: AppState::Search,
             search_query: String::new(),
             cursor_position: 0,
@@ -171,6 +193,10 @@ impl App {
             selected_result_index: None,
             search_tx,
             result_rx,
+            search_progress: None,
+            search_offset: 1,
+            is_searching: false,
+            current_search_id: 0,
             status_message: None,
             actions: App::get_available_actions(),
             pending_action: None,
@@ -219,21 +245,37 @@ impl App {
 
     pub fn on_tick(&mut self) {
         // check for search results
-        if let Ok(result) = self.result_rx.try_recv() {
+        while let Ok(result) = self.result_rx.try_recv() {
             match result {
-                Ok(videos) => {
-                    self.search_results = videos;
-                    self.input_mode = InputMode::Normal;
-                    self.state = AppState::Results;
-                    if !self.search_results.is_empty() {
-                        self.selected_result_index = Some(0);
-                        self.request_image_for_selection();
+                Ok((item, id)) => {
+                    if id != self.current_search_id {
+                        continue;
                     }
-                    self.status_message = Some("Search completed.".to_string());
+                    match item {
+                        yt::SearchResult::Video(video) => {
+                            self.search_results.push(video);
+                            if self.selected_result_index.is_none() {
+                                self.selected_result_index = Some(0);
+                                self.request_image_for_selection();
+                            }
+                            if self.state == AppState::Search {
+                                self.state = AppState::Results;
+                            }
+                        }
+                        yt::SearchResult::Progress(progress) => {
+                            self.search_progress = Some(progress);
+                            if progress >= 1.0 {
+                                self.is_searching = false;
+                                self.search_progress = None;
+                                self.status_message = Some("Results updated.".to_string());
+                            }
+                        }
+                    }
                 }
                 Err(e) => {
-                    self.input_mode = InputMode::Normal;
+                    self.is_searching = false;
                     self.status_message = Some(format!("Error: {}", e));
+                    self.search_progress = None;
                 }
             }
         }
@@ -347,10 +389,6 @@ impl App {
     }
 
     pub fn handle_key_event(&mut self, key: KeyEvent) {
-        if self.input_mode == InputMode::Loading {
-            return;
-        }
-
         match self.input_mode {
             InputMode::Normal => {
                 match self.state {
@@ -438,8 +476,12 @@ impl App {
                             self.move_selection(-1);
                         }
                         KeyCode::Enter => {
-                            if !self.search_results.is_empty() {
-                                self.state = AppState::ActionMenu;
+                            if let Some(idx) = self.selected_result_index {
+                                if idx < self.search_results.len() {
+                                    self.state = AppState::ActionMenu;
+                                } else {
+                                    self.load_more();
+                                }
                             }
                         }
                         KeyCode::Char('x') => {
@@ -499,10 +541,11 @@ impl App {
 
     fn move_selection(&mut self, delta: i32) {
         if self.search_results.is_empty() {
+            self.selected_result_index = None;
             return;
         }
 
-        let len = self.search_results.len();
+        let len = self.search_results.len() + 1; // +1 for "Load More"
         let current = self.selected_result_index.unwrap_or(0);
 
         let new_index = if delta > 0 {
@@ -512,7 +555,10 @@ impl App {
         };
 
         self.selected_result_index = Some(new_index);
-        self.request_image_for_selection();
+
+        if new_index < self.search_results.len() {
+            self.request_image_for_selection();
+        }
     }
 
     fn request_image_for_selection(&self) {
@@ -532,11 +578,49 @@ impl App {
             return;
         }
 
-        self.input_mode = InputMode::Loading;
+        self.input_mode = InputMode::Normal;
+        self.search_results.clear();
+        self.selected_result_index = None;
+        self.search_progress = Some(0.0);
+        self.search_offset = 1;
+        self.is_searching = true;
+        self.current_search_id += 1;
         self.status_message = Some(format!("Searching for '{}'...", self.search_query));
 
         // Send query to background task
-        let _ = self.search_tx.send(self.search_query.clone());
+        let _ = self
+            .search_tx
+            .send((self.search_query.clone(), 1, 20, self.current_search_id));
+    }
+
+    pub fn load_more(&mut self) {
+        if self.is_searching || self.search_query.trim().is_empty() {
+            return;
+        }
+
+        self.is_searching = true;
+        self.search_offset += 20;
+        self.search_progress = Some(0.0);
+        self.status_message = Some("Loading more...".to_string());
+
+        let _ = self.search_tx.send((
+            self.search_query.clone(),
+            self.search_offset,
+            self.search_offset + 19,
+            self.current_search_id,
+        ));
+    }
+
+    pub fn handle_paste(&mut self, text: String) {
+        if self.input_mode == InputMode::Editing {
+            self.search_query.insert_str(self.cursor_position, &text);
+            self.cursor_position += text.len();
+        } else {
+            // Auto-switch to editing and paste
+            self.input_mode = InputMode::Editing;
+            self.search_query.insert_str(self.cursor_position, &text);
+            self.cursor_position += text.len();
+        }
     }
 
     pub fn stop_playback(&mut self) {

@@ -28,6 +28,10 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
         constraints.push(Constraint::Length(3)); // Download bar
     }
 
+    if app.search_progress.is_some() {
+        constraints.push(Constraint::Length(3)); // Search bar progress
+    }
+
     constraints.push(Constraint::Length(3)); // Status bar
 
     let main_layout = Layout::default()
@@ -58,6 +62,11 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
             app.download_status.as_deref().unwrap_or("Downloading..."),
             main_layout[current_idx],
         );
+        current_idx += 1;
+    }
+
+    if let Some(progress) = app.search_progress {
+        render_download_gauge(f, progress, "Searching...", main_layout[current_idx]);
         current_idx += 1;
     }
 
@@ -327,7 +336,7 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
         .split(area);
 
     // Left: Results List
-    let items: Vec<ListItem> = app
+    let mut items: Vec<ListItem> = app
         .search_results
         .iter()
         .map(|v| {
@@ -338,6 +347,15 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
             ListItem::new(content)
         })
         .collect();
+
+    if !app.search_results.is_empty() {
+        items.push(ListItem::new(Line::from(vec![Span::styled(
+            " [ Load More... ] ",
+            Style::default()
+                .fg(THEME_ACCENT)
+                .add_modifier(Modifier::BOLD),
+        )])));
+    }
 
     let list = List::new(items)
         .block(
@@ -372,34 +390,37 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
     f.render_widget(details_block, chunks[1]);
 
     if let Some(idx) = app.selected_result_index {
-        if let Some(video) = app.search_results.get(idx) {
-            // Check for image
-            if let Some(img) = app.image_cache.get(&video.id) {
-                // Render image
-                // We split inner area: Top for image, Bottom for text
-                let layout = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Percentage(60), Constraint::Percentage(40)].as_ref())
-                    .split(inner_area);
+        if idx < app.search_results.len() {
+            if let Some(video) = app.search_results.get(idx) {
+                // Check for image
+                if let Some(img) = app.image_cache.get(&video.id) {
+                    // Render image
+                    // We split inner area: Top for image, Bottom for text
+                    let layout = Layout::default()
+                        .direction(Direction::Vertical)
+                        .constraints(
+                            [Constraint::Percentage(60), Constraint::Percentage(40)].as_ref(),
+                        )
+                        .split(inner_area);
 
-                // If resize fails or protocol fails, we just don't render or it renders empty/block
-                let mut protocol = picker.new_resize_protocol(img.clone());
-                let image = ratatui_image::StatefulImage::new(None);
-                f.render_stateful_widget(image, layout[0], &mut protocol);
+                    // If resize fails or protocol fails, we just don't render or it renders empty/block
+                    let mut protocol = picker.new_resize_protocol(img.clone());
+                    let image = ratatui_image::StatefulImage::new(None);
+                    f.render_stateful_widget(image, layout[0], &mut protocol);
 
-                let text = format!(
-                    "Title: {}\nChannel: {}\nDuration: {}\nViews: {}\nUploaded: {}",
-                    video.title,
-                    video.channel,
-                    video.duration_string,
-                    video.view_count.unwrap_or(0),
-                    video.upload_date.as_deref().unwrap_or("Unknown")
-                );
-                let p = Paragraph::new(text);
-                f.render_widget(p, layout[1]);
-            } else {
-                // No image yet
-                let text = format!(
+                    let text = format!(
+                        "Title: {}\nChannel: {}\nDuration: {}\nViews: {}\nUploaded: {}",
+                        video.title,
+                        video.channel,
+                        video.duration_string,
+                        video.view_count.unwrap_or(0),
+                        video.upload_date.as_deref().unwrap_or("Unknown")
+                    );
+                    let p = Paragraph::new(text);
+                    f.render_widget(p, layout[1]);
+                } else {
+                    // No image yet
+                    let text = format!(
                     "Title: {}\nChannel: {}\nDuration: {}\nViews: {}\nUploaded: {}\n\n(Loading Thumbnail...)",
                     video.title,
                     video.channel,
@@ -407,9 +428,15 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                     video.view_count.unwrap_or(0),
                     video.upload_date.as_deref().unwrap_or("Unknown")
                 );
-                let p = Paragraph::new(text);
-                f.render_widget(p, inner_area);
+                    let p = Paragraph::new(text);
+                    f.render_widget(p, inner_area);
+                }
             }
+        } else {
+            // Load More selected
+            let text = "\n\n  Press ENTER to load 20 more results...";
+            let p = Paragraph::new(text).style(Style::default().fg(THEME_ACCENT));
+            f.render_widget(p, inner_area);
         }
     } else {
         let p = Paragraph::new("No video selected");

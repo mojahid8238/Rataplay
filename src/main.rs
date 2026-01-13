@@ -7,6 +7,7 @@ use anyhow::Result;
 use app::{App, AppAction};
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event},
+    event::{DisableBracketedPaste, EnableBracketedPaste},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -50,7 +51,12 @@ async fn main() -> Result<()> {
     // Setup Terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(
+        stdout,
+        EnterAlternateScreen,
+        EnableMouseCapture,
+        EnableBracketedPaste
+    )?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -78,8 +84,10 @@ async fn main() -> Result<()> {
             .unwrap_or_else(|| Duration::from_secs(0));
 
         if crossterm::event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
-                app.handle_key_event(key);
+            match event::read()? {
+                Event::Key(key) => app.handle_key_event(key),
+                Event::Paste(text) => app.handle_paste(text),
+                _ => {}
             }
         }
 
@@ -243,7 +251,8 @@ async fn main() -> Result<()> {
     execute!(
         terminal.backend_mut(),
         LeaveAlternateScreen,
-        DisableMouseCapture
+        DisableMouseCapture,
+        DisableBracketedPaste
     )?;
     terminal.show_cursor()?;
     app.stop_playback();
