@@ -12,7 +12,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
-use ratatui_image::picker::Picker;
+use ratatui_image::picker::{Picker, ProtocolType};
 use std::process::exit;
 use std::{
     io,
@@ -60,14 +60,16 @@ async fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Initialize Image Picker
-    // Try to detect, otherwise fallback.
-    let mut picker = Picker::from_termios().unwrap_or_else(|_| {
-        // Fallback to a font size of 8x16 roughly?
-        // Or create without guessing
-        Picker::new((8, 16))
-    });
-    // Guessing protocol might need manual intervention for Sixel, but from_termios tries hard.
+    // Initialize Image Picker with specialized detection for Kitty/WezTerm
+    let mut picker = Picker::from_termios().unwrap_or_else(|_| Picker::new((8, 16)));
+
+    // Explicitly check for Kitty/WezTerm to enable advanced graphics protocol
+    let term = std::env::var("TERM").unwrap_or_default();
+    let term_program = std::env::var("TERM_PROGRAM").unwrap_or_default();
+    if term == "xterm-kitty" || term_program == "WezTerm" {
+        // Force Kitty protocol if detected to avoid pixelation
+        picker.protocol_type = ProtocolType::Kitty;
+    }
 
     // Create App
     let mut app = App::new();
