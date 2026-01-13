@@ -32,6 +32,10 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
         constraints.push(Constraint::Length(3)); // Search bar progress
     }
 
+    if app.terminal_loading {
+        constraints.push(Constraint::Length(3)); // Terminal loading progress
+    }
+
     constraints.push(Constraint::Length(3)); // Status bar
 
     let main_layout = Layout::default()
@@ -67,6 +71,21 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
 
     if let Some(progress) = app.search_progress {
         render_download_gauge(f, progress, "Searching...", main_layout[current_idx]);
+        current_idx += 1;
+    }
+
+    if app.terminal_loading {
+        let status = app
+            .terminal_loading_error
+            .as_deref()
+            .map(|err| format!("Error: {}", err))
+            .unwrap_or_else(|| "Buffering Terminal Playback...".to_string());
+        render_download_gauge(
+            f,
+            app.terminal_loading_progress,
+            &status,
+            main_layout[current_idx],
+        );
         current_idx += 1;
     }
 
@@ -300,7 +319,11 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 }
 
 fn render_search_bar(f: &mut Frame, app: &App, area: Rect) {
-    let input = Paragraph::new(app.search_query.as_str())
+    let width = (area.width as usize).saturating_sub(2);
+    let scroll = app.cursor_position.saturating_sub(width.saturating_sub(1));
+    let display_query: String = app.search_query.chars().skip(scroll).take(width).collect();
+
+    let input = Paragraph::new(display_query.as_str())
         .style(match app.input_mode {
             InputMode::Normal => Style::default().fg(THEME_FG),
             InputMode::Editing => Style::default()
@@ -325,7 +348,10 @@ fn render_search_bar(f: &mut Frame, app: &App, area: Rect) {
 
     // Show cursor if editing
     if app.input_mode == InputMode::Editing {
-        f.set_cursor_position((area.x + app.cursor_position as u16 + 1, area.y + 1));
+        f.set_cursor_position((
+            area.x + (app.cursor_position.saturating_sub(scroll)) as u16 + 1,
+            area.y + 1,
+        ));
     }
 }
 

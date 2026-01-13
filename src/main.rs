@@ -37,11 +37,15 @@ async fn main() -> Result<()> {
 
                     for line in stdout.lines() {
                         if line.contains("Current version:") {
-                            current_version = line.split("Current version: ").nth(1)
+                            current_version = line
+                                .split("Current version: ")
+                                .nth(1)
                                 .and_then(|s| s.split(" ").next())
                                 .map(|s| s.to_string());
                         } else if line.contains("Latest version:") {
-                            latest_version = line.split("Latest version: ").nth(1)
+                            latest_version = line
+                                .split("Latest version: ")
+                                .nth(1)
                                 .and_then(|s| s.split(" ").next())
                                 .map(|s| s.to_string());
                         }
@@ -49,7 +53,9 @@ async fn main() -> Result<()> {
 
                     if let (Some(current), Some(latest)) = (current_version, latest_version) {
                         if current < latest {
-                            println!("⚠️  UPDATE REQUIRED: You are behind the latest yt-dlp release.");
+                            println!(
+                                "⚠️  UPDATE REQUIRED: You are behind the latest yt-dlp release."
+                            );
                             println!("--------------------------------------------------");
                             println!("🚀 Latest version: {}", latest);
                             println!("--------------------------------------------------");
@@ -69,8 +75,7 @@ async fn main() -> Result<()> {
                             "✅ yt-dlp is up to date (Version: {})",
                             status.yt_dlp_version
                         );
-                    }
-                    else {
+                    } else {
                         // Fallback for unexpected output or permission errors
                         println!("yt-dlp version: {}", status.yt_dlp_version);
                         println!(
@@ -150,29 +155,13 @@ async fn main() -> Result<()> {
             // Kill previous playback if any
             app.stop_playback();
 
-            let in_terminal = matches!(action, AppAction::WatchInTerminal);
-
-            // Suspend TUI only if needed
-            if in_terminal {
-                execute!(
-                    terminal.backend_mut(),
-                    LeaveAlternateScreen,
-                    DisableMouseCapture
-                )?;
-                disable_raw_mode()?;
-                terminal.show_cursor()?;
-            }
+            // Suspend TUI only if needed (not needed for terminal anymore as it's separate)
 
             let full_url = url.clone();
 
             match action {
-                AppAction::WatchInTerminal => {
-                    if let Ok(mut child) = sys::process::play_video(&full_url.to_string(), true) {
-                        let _ = child.wait().await;
-                    }
-                }
                 AppAction::WatchExternal => {
-                    match sys::process::play_video(&full_url.to_string(), false) {
+                    match sys::process::play_video(&full_url.to_string(), false, None) {
                         Ok(child) => {
                             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                             let (res_tx, res_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -276,18 +265,37 @@ async fn main() -> Result<()> {
                     }
                 }
                 AppAction::Download => {}
+                AppAction::WatchInTerminal => {} // Handled separately
             }
-            if in_terminal {
-                // Resume TUI
-                enable_raw_mode()?;
-                execute!(
-                    terminal.backend_mut(),
-                    EnterAlternateScreen,
-                    EnableMouseCapture
-                )?;
-                terminal.hide_cursor()?;
-                terminal.clear()?;
+        }
+
+        // Handle Terminal Playback readiness
+        if let Some(url) = app.terminal_ready_url.take() {
+            app.terminal_loading = false;
+            app.terminal_loading_progress = 0.0;
+
+            // Suspend TUI logic but stay in Alternate Screen
+            execute!(terminal.backend_mut(), DisableMouseCapture)?;
+            disable_raw_mode()?;
+            terminal.show_cursor()?;
+
+            // Play video (direct URL is faster)
+            let (final_url, ua) = if url.contains('|') {
+                let parts: Vec<&str> = url.splitn(2, '|').collect();
+                (parts[0], Some(parts[1]))
+            } else {
+                (url.as_str(), None)
+            };
+
+            if let Ok(mut child) = sys::process::play_video(final_url, true, ua) {
+                let _ = child.wait().await;
             }
+
+            // Resume TUI
+            enable_raw_mode()?;
+            execute!(terminal.backend_mut(), EnableMouseCapture)?;
+            terminal.hide_cursor()?;
+            terminal.clear()?;
         }
 
         if last_tick.elapsed() >= tick_rate {
