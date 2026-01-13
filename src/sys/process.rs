@@ -2,14 +2,25 @@ use anyhow::Result;
 use std::process::Stdio;
 use tokio::process::{Child, Command};
 
-pub fn play_video(url: &str, in_terminal: bool) -> Result<Child> {
+pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>) -> Result<Child> {
     let mut cmd = Command::new("mpv");
     cmd.arg(url);
     cmd.kill_on_drop(true);
 
+    if let Some(ua) = user_agent {
+        cmd.arg(format!("--user-agent={}", ua));
+        // Also set ytdl=no to avoid double extraction which often causes 403
+        cmd.arg("--ytdl=no");
+    }
+
     if in_terminal {
         cmd.arg("--vo=tct");
         cmd.arg("--quiet");
+        // Buffering and speed flags
+        cmd.arg("--cache=yes");
+        cmd.arg("--cache-secs=5");
+        cmd.arg("--demuxer-max-bytes=50M");
+        cmd.arg("--demuxer-readahead-secs=5");
         cmd.stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());

@@ -127,6 +127,58 @@ pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
     Ok(formats)
 }
 
+pub async fn get_best_stream_url(url: &str) -> Result<String> {
+    // We use -g to get the URL.
+    // If it returns two lines (video and audio), we handle it.
+    let output = Command::new("yt-dlp")
+        .arg("-g")
+        .arg("-f")
+        .arg("bestvideo+bestaudio/best")
+        .arg("--no-playlist")
+        .arg(url)
+        .output()
+        .await?;
+
+    if output.status.success() {
+        let s = String::from_utf8(output.stdout)?;
+        let lines: Vec<&str> = s.lines().collect();
+        if lines.is_empty() {
+            anyhow::bail!("No stream URL found");
+        }
+
+        // If there are two lines, it's usually video then audio.
+        // mpv can play this if we join them with a space, but better yet,
+        // we can return the first one and let mpv's ytdl handle the audio IF it's a simple stream.
+        // HOWEVER, for DASH/HLS, -g usually returns a single manifest URL.
+        // If it's two separate URLs, we join them with a special format or just take best.
+        if lines.len() >= 2 {
+            // This is tricky. mpv doesn't easily take two URLs on cmdline as one 'stream'.
+            // But if we use 'best' instead of 'bestvideo+bestaudio', it will be slower but single.
+            // Let's try to get a single combined URL if possible first.
+            let fallback = Command::new("yt-dlp")
+                .arg("-g")
+                .arg("-f")
+                .arg("best")
+                .arg("--no-playlist")
+                .arg(url)
+                .output()
+                .await?;
+            if fallback.status.success() {
+                let s = String::from_utf8(fallback.stdout)?;
+                return Ok(s.trim().to_string());
+            }
+        }
+
+        Ok(lines[0].trim().to_string())
+    } else {
+        let err = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!(
+            "yt-dlp error: {}",
+            err.lines().next().unwrap_or("Unknown error")
+        )
+    }
+}
+
 pub fn format_duration(seconds: f64) -> String {
     let seconds = seconds as u64;
     let h = seconds / 3600;

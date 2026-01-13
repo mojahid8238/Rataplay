@@ -1,6 +1,6 @@
 use crate::model::Video;
 use crate::sys::{image as sys_image, yt};
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use image::DynamicImage;
 use std::collections::HashMap;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
@@ -97,6 +97,12 @@ pub struct App {
     pub playback_duration_str: Option<String>,
     pub is_paused: bool,
     pub is_finishing: bool,
+    pub terminal_loading: bool,
+    pub terminal_loading_progress: f32,
+    pub terminal_ready_url: Option<String>,
+    pub terminal_loading_error: Option<String>,
+    pub terminal_ready_tx: UnboundedSender<Result<String, String>>,
+    pub terminal_ready_rx: UnboundedReceiver<Result<String, String>>,
 }
 
 impl App {
@@ -182,6 +188,8 @@ impl App {
         });
 
         let (_, playback_res_rx) = mpsc::unbounded_channel();
+        let (terminal_ready_tx, terminal_ready_rx) =
+            mpsc::unbounded_channel::<Result<String, String>>();
 
         Self {
             running: true,
@@ -220,6 +228,12 @@ impl App {
             playback_duration_str: None,
             is_paused: false,
             is_finishing: false,
+            terminal_loading: false,
+            terminal_loading_progress: 0.0,
+            terminal_loading_error: None,
+            terminal_ready_url: None,
+            terminal_ready_tx,
+            terminal_ready_rx,
         }
     }
     fn get_available_actions() -> Vec<Action> {
@@ -386,6 +400,62 @@ impl App {
                 "{\"command\": [\"get_property\", \"duration\"], \"request_id\": 2}\n",
             );
         }
+
+        // Update terminal loading progress
+        if self.terminal_loading {
+            self.terminal_loading_progress += 0.02;
+            if self.terminal_loading_progress > 0.95 {
+                self.terminal_loading_progress = 0.95;
+            }
+
+            // Check if terminal is ready
+            while let Ok(res) = self.terminal_ready_rx.try_recv() {
+                match res {
+                    Ok(url) => {
+                        self.terminal_ready_url = Some(url);
+                        self.terminal_loading_progress = 1.0;
+                    }
+                    Err(e) => {
+                        self.terminal_loading_error = Some(e);
+                        self.terminal_loading_progress = 0.0;
+                        // Don't set terminal_loading to false yet, let TUI show error
+                        // Actually, we should probably auto-exit loading mode after a few seconds or on Esc
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn start_terminal_loading(&mut self, url: String, _title: String) {
+        self.terminal_loading = true;
+        self.terminal_loading_progress = 0.0;
+        self.terminal_loading_error = None;
+        self.terminal_ready_url = None;
+        let tx = self.terminal_ready_tx.clone();
+
+        tokio::spawn(async move {
+            // Stage 1: Fetch direct URL and User-Agent
+            let mut cmd = tokio::process::Command::new("yt-dlp");
+            cmd.arg("--user-agent");
+            let ua = match cmd.output().await {
+                Ok(out) if out.status.success() => {
+                    String::from_utf8_lossy(&out.stdout).trim().to_string()
+                }
+                _ => "Mozilla/5.0".to_string(), // Fallback
+            };
+
+            match yt::get_best_stream_url(&url).await {
+                Ok(direct_url) => {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    // Send as a single string joined by a special marker if needed,
+                    // but we'll use a hack: "URL|UA"
+                    let _ = tx.send(Ok(format!("{}|{}", direct_url, ua)));
+                }
+                Err(e) => {
+                    let _ = tx.send(Err(e.to_string()));
+                }
+            }
+        });
     }
 
     pub fn handle_key_event(&mut self, key: KeyEvent) {
@@ -444,6 +514,7 @@ impl App {
                             if let Some(idx) = self.selected_result_index {
                                 if let Some(video) = self.search_results.get(idx) {
                                     let url = video.url.clone();
+                                    let title = video.title.clone();
                                     match action.action {
                                         AppAction::Download => {
                                             // Trigger Format Fetch
@@ -452,9 +523,13 @@ impl App {
                                             self.status_message =
                                                 Some("Fetching formats...".to_string());
                                         }
+                                        AppAction::WatchInTerminal => {
+                                            self.stop_playback();
+                                            self.start_terminal_loading(url, title);
+                                            self.state = AppState::Results;
+                                        }
                                         _ => {
-                                            self.pending_action =
-                                                Some((action.action, url, video.title.clone()));
+                                            self.pending_action = Some((action.action, url, title));
                                             self.state = AppState::Results;
                                         }
                                     }
@@ -506,36 +581,80 @@ impl App {
                     },
                 }
             }
-            InputMode::Editing => match key.code {
-                KeyCode::Enter => {
-                    self.perform_search();
-                }
-                KeyCode::Char(c) => {
-                    self.search_query.insert(self.cursor_position, c);
-                    self.cursor_position += 1;
-                }
-                KeyCode::Backspace => {
-                    if self.cursor_position > 0 {
-                        self.search_query.remove(self.cursor_position - 1);
-                        self.cursor_position -= 1;
+            InputMode::Editing => {
+                let control = key.modifiers.contains(KeyModifiers::CONTROL);
+                match key.code {
+                    KeyCode::Enter => {
+                        self.perform_search();
                     }
-                }
-                KeyCode::Left => {
-                    if self.cursor_position > 0 {
-                        self.cursor_position -= 1;
+                    KeyCode::Char(c) => {
+                        if control {
+                            match c {
+                                'u' => {
+                                    self.search_query.drain(..self.cursor_position);
+                                    self.cursor_position = 0;
+                                }
+                                'k' => {
+                                    self.search_query.truncate(self.cursor_position);
+                                }
+                                'w' | 'h' => {
+                                    self.delete_word_backwards();
+                                }
+                                'a' => {
+                                    self.cursor_position = 0;
+                                }
+                                'e' => {
+                                    self.cursor_position = self.search_query.len();
+                                }
+                                _ => {}
+                            }
+                        } else {
+                            self.search_query.insert(self.cursor_position, c);
+                            self.cursor_position += 1;
+                        }
                     }
-                }
-                KeyCode::Right => {
-                    if self.cursor_position < self.search_query.len() {
-                        self.cursor_position += 1;
+                    KeyCode::Backspace => {
+                        if control {
+                            self.delete_word_backwards();
+                        } else if self.cursor_position > 0 {
+                            self.search_query.remove(self.cursor_position - 1);
+                            self.cursor_position -= 1;
+                        }
                     }
+                    KeyCode::Delete => {
+                        if self.cursor_position < self.search_query.len() {
+                            self.search_query.remove(self.cursor_position);
+                        }
+                    }
+                    KeyCode::Left => {
+                        if self.cursor_position > 0 {
+                            self.cursor_position -= 1;
+                        }
+                    }
+                    KeyCode::Right => {
+                        if self.cursor_position < self.search_query.len() {
+                            self.cursor_position += 1;
+                        }
+                    }
+                    KeyCode::Home => {
+                        self.cursor_position = 0;
+                    }
+                    KeyCode::End => {
+                        self.cursor_position = self.search_query.len();
+                    }
+                    KeyCode::Esc => {
+                        self.input_mode = InputMode::Normal;
+                    }
+                    _ => {}
                 }
-                KeyCode::Esc => {
+            }
+            InputMode::Loading => {
+                if key.code == KeyCode::Esc {
+                    self.terminal_loading = false;
+                    self.terminal_loading_error = None;
                     self.input_mode = InputMode::Normal;
                 }
-                _ => {}
-            },
-            InputMode::Loading => {} // Handled by guard at top of function
+            }
         }
     }
 
@@ -662,5 +781,38 @@ impl App {
         if let Some(tx) = &self.playback_cmd_tx {
             let _ = tx.send(cmd.to_string());
         }
+    }
+
+    fn delete_word_backwards(&mut self) {
+        if self.cursor_position == 0 {
+            return;
+        }
+
+        let mut chars = self.search_query[..self.cursor_position]
+            .char_indices()
+            .rev()
+            .peekable();
+
+        // Skip initial whitespace
+        while let Some(&(_, c)) = chars.peek() {
+            if c.is_whitespace() {
+                chars.next();
+            } else {
+                break;
+            }
+        }
+
+        // Skip the word
+        while let Some(&(_, c)) = chars.peek() {
+            if !c.is_whitespace() {
+                chars.next();
+            } else {
+                break;
+            }
+        }
+
+        let new_pos = chars.peek().map(|(i, _)| i + 1).unwrap_or(0);
+        self.search_query.drain(new_pos..self.cursor_position);
+        self.cursor_position = new_pos;
     }
 }
