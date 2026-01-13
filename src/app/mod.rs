@@ -459,10 +459,18 @@ impl App {
     }
 
     pub fn handle_key_event(&mut self, key: KeyEvent) {
+        let code = match self.input_mode {
+            InputMode::Editing => key.code,
+            _ => match key.code {
+                KeyCode::Char(c) => KeyCode::Char(c.to_lowercase().next().unwrap_or(c)),
+                _ => key.code,
+            },
+        };
+
         match self.input_mode {
             InputMode::Normal => {
                 match self.state {
-                    AppState::FormatSelection => match key.code {
+                    AppState::FormatSelection => match code {
                         KeyCode::Esc | KeyCode::Char('q') => {
                             self.state = AppState::ActionMenu;
                         }
@@ -505,12 +513,12 @@ impl App {
                         _ => {}
                     },
                     AppState::ActionMenu => {
-                        if key.code == KeyCode::Esc || key.code == KeyCode::Char('q') {
+                        if code == KeyCode::Esc || code == KeyCode::Char('q') {
                             self.state = AppState::Results;
                             return;
                         }
 
-                        if let Some(action) = self.actions.iter().find(|a| a.key == key.code) {
+                        if let Some(action) = self.actions.iter().find(|a| a.key == code) {
                             if let Some(idx) = self.selected_result_index {
                                 if let Some(video) = self.search_results.get(idx) {
                                     let url = video.url.clone();
@@ -537,7 +545,7 @@ impl App {
                             }
                         }
                     }
-                    _ => match key.code {
+                    _ => match code {
                         KeyCode::Char('q') => {
                             self.running = false;
                         }
@@ -649,7 +657,7 @@ impl App {
                 }
             }
             InputMode::Loading => {
-                if key.code == KeyCode::Esc {
+                if code == KeyCode::Esc || code == KeyCode::Char('x') {
                     self.terminal_loading = false;
                     self.terminal_loading_error = None;
                     self.input_mode = InputMode::Normal;
@@ -745,11 +753,18 @@ impl App {
     pub fn stop_playback(&mut self) {
         if let Some(mut child) = self.playback_process.take() {
             let _ = child.start_kill();
-            self.playback_cmd_tx = None;
-            self.playback_title = None;
-            self.is_paused = false;
-            self.status_message = Some("Playback stopped.".to_string());
         }
+        self.playback_cmd_tx = None;
+        self.playback_title = None;
+        self.playback_time = 0.0;
+        self.playback_total = 0.0;
+        self.playback_duration_str = None;
+        self.is_paused = false;
+        self.is_finishing = false;
+        self.terminal_loading = false;
+        self.terminal_loading_error = None;
+        self.terminal_ready_url = None;
+        self.status_message = Some("Stopped.".to_string());
     }
 
     pub fn toggle_pause(&mut self) {

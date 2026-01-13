@@ -15,12 +15,12 @@ pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>) -> Res
 
     if in_terminal {
         cmd.arg("--vo=tct");
-        cmd.arg("--quiet");
+        cmd.arg("--really-quiet");
         // Buffering and speed flags
         cmd.arg("--cache=yes");
-        cmd.arg("--cache-secs=5");
-        cmd.arg("--demuxer-max-bytes=50M");
-        cmd.arg("--demuxer-readahead-secs=5");
+        cmd.arg("--cache-secs=2");
+        cmd.arg("--demuxer-max-bytes=10M");
+        cmd.arg("--demuxer-readahead-secs=2");
         cmd.stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());

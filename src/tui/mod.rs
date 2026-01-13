@@ -3,7 +3,10 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Gauge, List, ListItem, ListState, Paragraph},
+    widgets::{
+        Block, BorderType, Borders, Cell, Gauge, List, ListItem, ListState, Paragraph, Row, Table,
+        TableState,
+    },
     Frame,
 };
 use ratatui_image::picker::Picker;
@@ -198,48 +201,96 @@ fn render_format_selection(
     formats: &[crate::model::VideoFormat],
     area: Rect,
 ) {
+    let area = centered_rect(40, 30, area);
+    f.render_widget(ratatui::widgets::Clear, area);
+
     let block = Block::default()
-        .title(" Select Format ")
+        .title(" Select Quality ")
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(THEME_HIGHLIGHT))
         .style(Style::default().bg(THEME_BG));
 
-    let area = centered_rect(80, 60, area);
-    f.render_widget(ratatui::widgets::Clear, area);
+    let header_style = Style::default()
+        .fg(THEME_ACCENT)
+        .add_modifier(Modifier::BOLD);
 
-    // Create list items
-    let items: Vec<ListItem> = formats
+    let header = Row::new(vec![
+        Cell::from(" QUALITY"),
+        Cell::from(" FORMAT"),
+        Cell::from(" SIZE"),
+    ])
+    .style(header_style)
+    .height(1)
+    .bottom_margin(1);
+
+    let rows: Vec<Row> = formats
         .iter()
         .map(|fmt| {
-            let text = format!(
-                "{: <10} | {: <5} | {: <12} | {: <20} | {}",
-                fmt.format_id,
-                fmt.ext,
-                fmt.resolution,
-                fmt.note,
-                fmt.filesize
-                    .map(|s| format!("~{}MB", s / 1024 / 1024))
-                    .unwrap_or("?".to_string())
-            );
-            ListItem::new(text)
+            let quality = if fmt.resolution == "audio only" {
+                "Audio".to_string()
+            } else if fmt.resolution == "unknown" || fmt.resolution.trim().is_empty() {
+                if fmt.note.trim().is_empty() {
+                    "Unknown".to_string()
+                } else {
+                    fmt.note.clone()
+                }
+            } else {
+                // Try to extract height from "WIDTHxHEIGHT"
+                let height = fmt.resolution.split('x').last().unwrap_or(&fmt.resolution);
+                if !height.is_empty() && height.chars().all(|c| c.is_ascii_digit()) {
+                    format!("{}p", height)
+                } else if !height.is_empty() {
+                    height.to_string()
+                } else {
+                    "Unknown".to_string()
+                }
+            };
+
+            let size = fmt
+                .filesize
+                .map(|s| {
+                    let mb = s as f64 / 1024.0 / 1024.0;
+                    if mb >= 1024.0 {
+                        format!("{:.1} GB", mb / 1024.0)
+                    } else {
+                        format!("{:.1} MB", mb)
+                    }
+                })
+                .unwrap_or_else(|| "N/A".to_string());
+
+            Row::new(vec![
+                Cell::from(format!(" {}", quality)),
+                Cell::from(fmt.ext.clone()),
+                Cell::from(size),
+            ])
+            .style(Style::default().fg(THEME_FG))
+            .height(1)
         })
         .collect();
 
-    let list = List::new(items)
-        .block(block)
-        .highlight_style(
-            Style::default()
-                .bg(THEME_HIGHLIGHT)
-                .fg(Color::Black)
-                .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol(">> ");
+    let table = Table::new(
+        rows,
+        [
+            Constraint::Percentage(50),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+        ],
+    )
+    .header(header)
+    .block(block)
+    .row_highlight_style(
+        Style::default()
+            .bg(THEME_HIGHLIGHT)
+            .fg(Color::Black)
+            .add_modifier(Modifier::BOLD),
+    )
+    .highlight_symbol(">> ");
 
-    let mut state = ListState::default();
+    let mut state = TableState::default();
     state.select(selected_index);
 
-    f.render_stateful_widget(list, area, &mut state);
+    f.render_stateful_widget(table, area, &mut state);
 }
 
 fn render_action_menu(f: &mut Frame, app: &App, area: Rect) {
@@ -250,7 +301,7 @@ fn render_action_menu(f: &mut Frame, app: &App, area: Rect) {
         .style(Style::default().bg(THEME_BG).fg(THEME_FG))
         .border_style(Style::default().fg(THEME_HIGHLIGHT));
 
-    let area = centered_rect(50, 40, area);
+    let area = centered_rect(35, 20, area);
     f.render_widget(ratatui::widgets::Clear, area);
 
     let items: Vec<ListItem> = app
