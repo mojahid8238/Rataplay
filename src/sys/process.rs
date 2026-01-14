@@ -26,7 +26,7 @@ pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>) -> Res
             .stderr(Stdio::inherit());
     } else {
         // Detached / background
-        let socket_path = format!("/tmp/vivid-mpv-{}.sock", std::process::id());
+        let socket_path = format!("/tmp/rataplay-mpv-{}.sock", std::process::id());
         cmd.arg(format!("--input-ipc-server={}", socket_path));
         cmd.arg("--idle=yes");
         cmd.stdin(Stdio::null())
@@ -44,7 +44,7 @@ pub fn play_audio(url: &str) -> Result<Child> {
     cmd.arg("--ytdl-format=bestaudio/best");
     cmd.kill_on_drop(true);
 
-    let socket_path = format!("/tmp/vivid-mpv-{}.sock", std::process::id());
+    let socket_path = format!("/tmp/rataplay-mpv-{}.sock", std::process::id());
     cmd.arg(format!("--input-ipc-server={}", socket_path));
     cmd.arg("--idle=yes");
     cmd.arg(url);

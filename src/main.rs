@@ -93,7 +93,7 @@ async fn main() -> Result<()> {
             // Secondary dependency checks
             if !status.mpv_installed {
                 eprintln!("CRITICAL: mpv is not installed or not in PATH.");
-                eprintln!("Vivid requires mpv for playback.");
+                eprintln!("Rataplay requires mpv for playback.");
                 exit(1);
             }
         }
@@ -103,7 +103,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    println!("Environment check passed. Starting Vivid...");
+    println!("Environment check passed. Starting Rataplay...");
 
     // Setup Terminal
     enable_raw_mode()?;
@@ -167,7 +167,7 @@ async fn main() -> Result<()> {
                             let (res_tx, res_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                             app.playback_res_rx = res_rx;
 
-                            let socket_path = format!("/tmp/vivid-mpv-{}.sock", std::process::id());
+                            let socket_path = format!("/tmp/rataplay-mpv-{}.sock", std::process::id());
 
                             tokio::spawn(async move {
                                 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -219,7 +219,7 @@ async fn main() -> Result<()> {
                             let (res_tx, res_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                             app.playback_res_rx = res_rx;
 
-                            let socket_path = format!("/tmp/vivid-mpv-{}.sock", std::process::id());
+                            let socket_path = format!("/tmp/rataplay-mpv-{}.sock", std::process::id());
 
                             tokio::spawn(async move {
                                 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};

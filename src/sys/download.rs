@@ -19,9 +19,9 @@ pub async fn download_video(
 ) -> Result<()> {
     let _ = tx.send(DownloadProgress::Started);
 
-    // Resolve download directory: ~/Videos/Vivid
+    // Resolve download directory: ~/Videos/Rataplay
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let download_dir = std::path::Path::new(&home).join("Videos").join("Vivid");
+    let download_dir = std::path::Path::new(&home).join("Videos").join("Rataplay");
 
     // Create directory if it doesn't exist
     if let Err(e) = tokio::fs::create_dir_all(&download_dir).await {
