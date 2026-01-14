@@ -1,9 +1,9 @@
-# 🎬 Vivid
+# 🎬 Rataplay
 
 
-**Vivid** is a premium, high-performance Terminal User Interface (TUI) for searching, playing, and downloading videos. Born from curiosity and inspired by [GopherTube](https://github.com/KrishnaSSH/GopherTube), it is built with Rust to provide a sleek, modern experience for media consumption directly from your terminal.
+**Rataplay** is a premium, high-performance Terminal User Interface (TUI) for searching, playing, and downloading videos. Born from curiosity and inspired by [GopherTube](https://github.com/KrishnaSSH/GopherTube), it is built with Rust to provide a sleek, modern experience for media consumption directly from your terminal.
 
-![Vivid Demo](./assets/demo.gif)
+![rataplay Demo](./assets/demo.gif)
 
 ## ✨ Features
 
@@ -19,9 +19,9 @@
 
 ## 🛠️ Prerequisites
 
-Vivid relies on a few external tools for media handling:
+Rataplay relies on a few external tools for media handling:
 
-1. **[yt-dlp](https://github.com/yt-dlp/yt-dlp)**: Required for metadata extraction and streaming URLs. (Vivid performs an automatic update check on startup).
+1. **[yt-dlp](https://github.com/yt-dlp/yt-dlp)**: Required for metadata extraction and streaming URLs. (Rataplay performs an automatic update check on startup).
 2. **[mpv](https://mpv.io/)**: Required for all playback features.
 
 ## 🚀 Installation
@@ -31,17 +31,20 @@ Vivid relies on a few external tools for media handling:
 Ensure you have [Rust](https://www.rust-lang.org/tools/install) installed.
 
 ```bash
-cargo install --git https://github.com/mojahid8238/Vivid
+cargo install --git https://github.com/mojahid8238/Rataplay.git
 ```
-The binary should be available as `vivid` (assuming you have `~/.cargo/bin` in your `$PATH`).
+The binary should be available as `rataplay` (assuming you have `~/.cargo/bin` in your `$PATH`).
 
-
+### From AUR
+```bash
+paru -S rataplay
+```
 
 ## 🎮 Usage
 
 Simply run:
 ```bash
-vivid
+rataplay
 ```
 
 ### Keybindings
@@ -61,7 +64,7 @@ vivid
 | `[` / `]` | Seek -30s / +30s |
 | `x` | Stop Playback |
 | `Esc` | Cancel / Back |
-| `q` | Quit Vivid |
+| `q` | Quit rataplay |
 
 ## 🎨 Recommended Terminals
 
@@ -70,7 +73,7 @@ For the best visual experience (sharp thumbnails), we recommend:
 - **WezTerm**
 - **Konsole** (with Sixel support)
 
-Vivid automatically detects your terminal and chooses the best possible graphics protocol.
+Rataplay automatically detects your terminal and chooses the best possible graphics protocol.
 
 ## 📜 License
 

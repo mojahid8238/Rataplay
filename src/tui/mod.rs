@@ -31,10 +31,6 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
         constraints.push(Constraint::Length(3)); // Download bar
     }
 
-    if app.search_progress.is_some() {
-        constraints.push(Constraint::Length(3)); // Search bar progress
-    }
-
     if app.terminal_loading {
         constraints.push(Constraint::Length(3)); // Terminal loading progress
     }
@@ -69,11 +65,6 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
             app.download_status.as_deref().unwrap_or("Downloading..."),
             main_layout[current_idx],
         );
-        current_idx += 1;
-    }
-
-    if let Some(progress) = app.search_progress {
-        render_download_gauge(f, progress, "Searching...", main_layout[current_idx]);
         current_idx += 1;
     }
 
@@ -424,13 +415,10 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
         .enumerate()
         .map(|(i, v)| {
             let lines = vec![
-                Line::from(vec![
-                    Span::styled(format!("{:02}. ", i + 1), Style::default().fg(THEME_BORDER)),
-                    Span::styled(
-                        &v.title,
-                        Style::default().add_modifier(Modifier::BOLD).fg(THEME_FG),
-                    ),
-                ]),
+                Line::from(Span::styled(
+                    format!(" {}. {}", i + 1, &v.title),
+                    Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD),
+                )),
                 Line::from(vec![
                     Span::raw("    "),
                     Span::styled(&v.channel, Style::default().fg(THEME_ACCENT)),
@@ -444,7 +432,7 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
         })
         .collect();
 
-    if !app.search_results.is_empty() {
+    if !app.search_results.is_empty() && !app.is_url_mode {
         items.push(ListItem::new(vec![
             Line::from(""),
             Line::from(vec![
@@ -498,14 +486,7 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                     // Render image
                     let layout = Layout::default()
                         .direction(Direction::Vertical)
-                        .constraints(
-                            [
-                                Constraint::Percentage(60),
-                                Constraint::Length(1), // Spacer
-                                Constraint::Percentage(40),
-                            ]
-                            .as_ref(),
-                        )
+                        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
                         .split(inner_area);
 
                     // If resize fails or protocol fails, we just don't render or it renders empty/block
@@ -513,6 +494,7 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                     let image = ratatui_image::StatefulImage::new(None);
                     f.render_stateful_widget(image, layout[0], &mut protocol);
 
+                    // Details Text
                     let views = video.view_count.unwrap_or(0);
                     let views_fmt = if views > 1_000_000 {
                         format!("{:.1}M", views as f64 / 1_000_000.0)
@@ -522,9 +504,7 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                         views.to_string()
                     };
 
-                    let upload_date = format_upload_date(video.upload_date.as_deref());
-
-                    let text = vec![
+                    let mut text_lines = vec![
                         Line::from(vec![
                             Span::styled(
                                 "Title: ",
@@ -561,7 +541,11 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                             ),
                             Span::styled(views_fmt, Style::default().fg(THEME_FG)),
                         ]),
-                        Line::from(vec![
+                    ];
+
+                    if !video.is_partial {
+                        let upload_date = format_upload_date(video.upload_date.as_deref());
+                        text_lines.push(Line::from(vec![
                             Span::styled(
                                 "Uploaded: ",
                                 Style::default()
@@ -569,25 +553,64 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                                     .add_modifier(Modifier::BOLD),
                             ),
                             Span::styled(upload_date, Style::default().fg(THEME_FG)),
-                        ]),
-                    ];
-                    let p = Paragraph::new(text).block(Block::default().borders(Borders::NONE));
-                    f.render_widget(p, layout[2]);
+                        ]));
+                    }
+
+                    let p = Paragraph::new(text_lines).block(
+                        Block::default()
+                            .borders(Borders::NONE)
+                            .padding(ratatui::widgets::Padding::left(1)),
+                    );
+                    f.render_widget(p, layout[1]);
                 } else {
                     // No image yet
-                    let text = format!(
-                        "Title: {}\nChannel: {}\nDuration: {}\nViews: {}\nUploaded: {}\n\n(Loading Thumbnail...)",
-                        video.title,
-                        video.channel,
-                        video.duration_string,
-                        video.view_count.unwrap_or(0),
+                    let views_str = if let Some(v) = video.view_count {
+                        if v > 1_000_000 {
+                            format!("{:.1}M", v as f64 / 1_000_000.0)
+                        } else if v > 1_000 {
+                            format!("{:.1}K", v as f64 / 1_000.0)
+                        } else {
+                            v.to_string()
+                        }
+                    } else if video.is_partial {
+                        "Loading...".to_string()
+                    } else {
+                        "N/A".to_string()
+                    };
+
+                    let upload_str = if video.is_partial {
+                        String::new() // Don't show uploaded if partial
+                    } else if video.upload_date.is_some() {
                         format_upload_date(video.upload_date.as_deref())
-                    );
-                    let p = Paragraph::new(text);
+                    } else {
+                        "Unknown".to_string()
+                    };
+
+                    let status_msg = if video.is_partial {
+                        "(Fetching Details...)"
+                    } else {
+                        "(Loading Thumbnail...)"
+                    };
+
+                    let mut lines = vec![
+                        format!("Title: {}", video.title),
+                        format!("Channel: {}", video.channel),
+                        format!("Duration: {}", video.duration_string),
+                        format!("Views: {}", views_str),
+                    ];
+
+                    if !video.is_partial {
+                        lines.push(format!("Uploaded: {}", upload_str));
+                    }
+
+                    lines.push(String::new());
+                    lines.push(status_msg.to_string());
+
+                    let p = Paragraph::new(lines.join("\n"));
                     f.render_widget(p, inner_area);
                 }
             }
-        } else {
+        } else if !app.is_url_mode {
             // Load More selected
             let text = "\n\n  Press ENTER to load 20 more results...";
             let p = Paragraph::new(text).style(Style::default().fg(THEME_ACCENT));

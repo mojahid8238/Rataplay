@@ -9,7 +9,7 @@ pub enum SearchResult {
     Progress(f32),
 }
 
-pub async fn search_videos(
+pub async fn search_videos_flat(
     query: &str,
     start: u32,
     end: u32,
@@ -25,10 +25,23 @@ pub async fn search_videos(
 
     let args = if is_url {
         // If it's a URL, just get that single video's info
-        vec!["--dump-json", "--no-playlist", &search_query]
+        // For flat search of a URL (playlist or video), we still use flat-playlist
+        vec![
+            "--dump-json",
+            "--flat-playlist",
+            "--no-warnings",
+            &search_query,
+        ]
     } else {
         // If search, get results in the specified range
-        vec!["--dump-json", "--playlist-start", &start_str, &search_query]
+        vec![
+            "--dump-json",
+            "--flat-playlist",
+            "--no-warnings",
+            "--playlist-start",
+            &start_str,
+            &search_query,
+        ]
     };
 
     let mut child = Command::new("yt-dlp")
@@ -54,6 +67,93 @@ pub async fn search_videos(
             let id = val["id"].as_str().unwrap_or_default().to_string();
             let title = val["title"].as_str().unwrap_or_default().to_string();
             let channel = val["uploader"].as_str().unwrap_or("Unknown").to_string();
+            let mut final_url = val["url"]
+                .as_str()
+                .or_else(|| val["webpage_url"].as_str())
+                .unwrap_or("")
+                .to_string();
+
+            if final_url.is_empty() {
+                final_url = id.clone();
+            }
+
+            let duration = val["duration"].as_f64().unwrap_or(0.0);
+            // Thumbnails might be in 'thumbnails' array (last is best) or 'thumbnail' string
+            let thumbnail = val["thumbnails"]
+                .as_array()
+                .and_then(|arr| arr.last())
+                .and_then(|t| t["url"].as_str())
+                .map(|s| s.to_string())
+                .or_else(|| val["thumbnail"].as_str().map(|s| s.to_string()));
+            let view_count = val["view_count"].as_u64();
+            let upload_date = val["upload_date"].as_str().map(|s| s.to_string());
+
+            let duration_string = format_duration(duration);
+
+            let item_type_str = val["_type"].as_str().unwrap_or("video"); // "url", "playlist", "video"
+            let video_type = match item_type_str {
+                "channel" => crate::model::VideoType::Channel,
+                _ => crate::model::VideoType::Video,
+            };
+
+            let video = Video {
+                id,
+                title,
+                channel,
+                url: final_url,
+                duration_string,
+                thumbnail_url: thumbnail,
+                view_count,
+                upload_date,
+                is_partial: true,
+                video_type,
+            };
+
+            count += 1;
+            let progress = (count as f32 / expected as f32).min(1.0);
+            let _ = tx.send(Ok(SearchResult::Video(video)));
+            // We removed progress bar from UI plan, but keeping the event for now as App handles it
+            let _ = tx.send(Ok(SearchResult::Progress(progress)));
+        }
+    }
+
+    let _ = child.wait().await;
+    let _ = tx.send(Ok(SearchResult::Progress(1.0)));
+    Ok(())
+}
+
+pub async fn resolve_video_details(
+    items: Vec<String>,
+    tx: tokio::sync::mpsc::UnboundedSender<Result<Video, String>>,
+) -> Result<()> {
+    if items.is_empty() {
+        return Ok(());
+    }
+
+    let mut args = vec!["--dump-json", "--no-playlist", "--no-warnings"];
+    for item in &items {
+        args.push(item);
+    }
+
+    let mut child = Command::new("yt-dlp")
+        .args(&args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("Failed to spawn yt-dlp for details")?;
+
+    let stdout = child.stdout.take().context("Failed to take stdout")?;
+    let mut reader = tokio::io::BufReader::new(stdout);
+    let mut lines = tokio::io::AsyncBufReadExt::lines(&mut reader);
+
+    while let Some(line) = lines.next_line().await? {
+        if line.trim().is_empty() {
+            continue;
+        }
+        if let Ok(val) = serde_json::from_str::<Value>(&line) {
+            let id = val["id"].as_str().unwrap_or_default().to_string();
+            let title = val["title"].as_str().unwrap_or_default().to_string();
+            let channel = val["uploader"].as_str().unwrap_or("Unknown").to_string();
             let url = val["webpage_url"].as_str().unwrap_or_default().to_string();
             let duration = val["duration"].as_f64().unwrap_or(0.0);
             let thumbnail = val["thumbnail"].as_str().map(|s| s.to_string());
@@ -71,19 +171,26 @@ pub async fn search_videos(
                 thumbnail_url: thumbnail,
                 view_count,
                 upload_date,
+                is_partial: false,
+                video_type: crate::model::VideoType::Video,
             };
-
-            count += 1;
-            let progress = (count as f32 / expected as f32).min(1.0);
-            let _ = tx.send(Ok(SearchResult::Video(video)));
-            let _ = tx.send(Ok(SearchResult::Progress(progress)));
+            if tx.send(Ok(video)).is_err() {
+                // Receiver dropped, so we can stop.
+                break;
+            }
+        } else {
+            // Forward errors
+            if tx.send(Err(format!("Failed to parse yt-dlp JSON: {}", line))).is_err() {
+                break;
+            }
         }
     }
 
-    let _ = child.wait().await;
-    let _ = tx.send(Ok(SearchResult::Progress(1.0)));
+    child.wait().await?;
+
     Ok(())
 }
+
 
 pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
     let output = Command::new("yt-dlp")

@@ -10,7 +10,18 @@ pub struct Video {
     pub thumbnail_url: Option<String>,
     pub view_count: Option<u64>,
     pub upload_date: Option<String>,
-    // We might add more fields as we parse yt-dlp -j output
+    // New fields for two-stage fetching
+    #[serde(default)]
+    pub is_partial: bool,
+    #[serde(default)]
+    pub video_type: VideoType,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum VideoType {
+    #[default]
+    Video,
+    Channel,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

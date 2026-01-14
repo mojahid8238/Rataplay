@@ -63,6 +63,9 @@ pub struct App {
     pub is_searching: bool,
     pub current_search_id: usize,
 
+    // If the current search was a direct URL
+    pub is_url_mode: bool,
+
     // Messages/Status
     pub status_message: Option<String>,
 
@@ -103,6 +106,11 @@ pub struct App {
     pub terminal_loading_error: Option<String>,
     pub terminal_ready_tx: UnboundedSender<Result<String, String>>,
     pub terminal_ready_rx: UnboundedReceiver<Result<String, String>>,
+
+    // Details Resolution
+    pub details_tx: UnboundedSender<Vec<String>>,
+    pub details_rx: UnboundedReceiver<Result<Video, String>>,
+    pub pending_resolution_ids: Vec<String>,
 }
 
 impl App {
@@ -119,7 +127,8 @@ impl App {
                     let (item_tx, mut item_rx) = mpsc::unbounded_channel();
 
                     let search_handle = tokio::spawn(async move {
-                        if let Err(e) = yt::search_videos(&query, start, end, item_tx.clone()).await
+                        if let Err(e) =
+                            yt::search_videos_flat(&query, start, end, item_tx.clone()).await
                         {
                             let _ = item_tx.send(Err(e.to_string()));
                         }
@@ -191,6 +200,18 @@ impl App {
         let (terminal_ready_tx, terminal_ready_rx) =
             mpsc::unbounded_channel::<Result<String, String>>();
 
+        let (details_tx, mut details_req_rx) = mpsc::unbounded_channel::<Vec<String>>();
+        let (details_res_tx, details_rx) = mpsc::unbounded_channel();
+
+        tokio::spawn(async move {
+            while let Some(ids) = details_req_rx.recv().await {
+                let res_tx = details_res_tx.clone();
+                if let Err(e) = yt::resolve_video_details(ids, res_tx.clone()).await {
+                    let _ = res_tx.send(Err(e.to_string()));
+                }
+            }
+        });
+
         Self {
             running: true,
             input_mode: InputMode::Editing,
@@ -205,6 +226,7 @@ impl App {
             search_offset: 1,
             is_searching: false,
             current_search_id: 0,
+            is_url_mode: false,
             status_message: None,
             actions: App::get_available_actions(),
             pending_action: None,
@@ -234,6 +256,9 @@ impl App {
             terminal_ready_url: None,
             terminal_ready_tx,
             terminal_ready_rx,
+            details_tx,
+            details_rx,
+            pending_resolution_ids: Vec::new(),
         }
     }
     fn get_available_actions() -> Vec<Action> {
@@ -267,6 +292,18 @@ impl App {
                     }
                     match item {
                         yt::SearchResult::Video(video) => {
+                            let is_partial = video.is_partial;
+                            if is_partial && video.video_type == crate::model::VideoType::Video {
+                                self.pending_resolution_ids.push(video.url.clone());
+                            }
+
+                            // Trigger image download if thumbnail exists, even if partial
+                            if let Some(url) = &video.thumbnail_url {
+                                if !self.image_cache.contains_key(&video.id) {
+                                    let _ = self.image_tx.send((video.id.clone(), url.clone()));
+                                }
+                            }
+
                             self.search_results.push(video);
                             if self.selected_result_index.is_none() {
                                 self.selected_result_index = Some(0);
@@ -282,6 +319,13 @@ impl App {
                                 self.is_searching = false;
                                 self.search_progress = None;
                                 self.status_message = Some("Results updated.".to_string());
+
+                                // Flush pending resolutions
+                                if !self.pending_resolution_ids.is_empty() {
+                                    let items: Vec<String> =
+                                        self.pending_resolution_ids.drain(..).collect();
+                                    let _ = self.details_tx.send(items);
+                                }
                             }
                         }
                     }
@@ -290,6 +334,29 @@ impl App {
                     self.is_searching = false;
                     self.status_message = Some(format!("Error: {}", e));
                     self.search_progress = None;
+                }
+            }
+        }
+
+        // Flush pending resolutions periodically (e.g. if we have > 5 items)
+        if self.pending_resolution_ids.len() >= 5 {
+            let items: Vec<String> = self.pending_resolution_ids.drain(..).collect();
+            let _ = self.details_tx.send(items);
+        }
+
+        // Apply resolved details
+        while let Ok(res) = self.details_rx.try_recv() {
+            match res {
+                Ok(v) => {
+                    // Find and replace in search_results
+                    if let Some(existing) = self.search_results.iter_mut().find(|x| x.id == v.id) {
+                        *existing = v;
+                    }
+                    // Trigger image request for selection again if needed
+                    self.request_image_for_selection();
+                }
+                Err(e) => {
+                    self.status_message = Some(format!("Details error: {}", e));
                 }
             }
         }
@@ -562,7 +629,7 @@ impl App {
                             if let Some(idx) = self.selected_result_index {
                                 if idx < self.search_results.len() {
                                     self.state = AppState::ActionMenu;
-                                } else {
+                                } else if !self.is_url_mode {
                                     self.load_more();
                                 }
                             }
@@ -672,7 +739,11 @@ impl App {
             return;
         }
 
-        let len = self.search_results.len() + 1; // +1 for "Load More"
+        let len = if !self.search_results.is_empty() && !self.is_url_mode {
+            self.search_results.len() + 1 // +1 for "Load More"
+        } else {
+            self.search_results.len()
+        };
         let current = self.selected_result_index.unwrap_or(0);
 
         let new_index = if delta > 0 {
@@ -709,15 +780,23 @@ impl App {
         self.search_results.clear();
         self.selected_result_index = None;
         self.search_progress = Some(0.0);
-        self.search_offset = 1;
         self.is_searching = true;
         self.current_search_id += 1;
         self.status_message = Some(format!("Searching for '{}'...", self.search_query));
 
-        // Send query to background task
-        let _ = self
-            .search_tx
-            .send((self.search_query.clone(), 1, 20, self.current_search_id));
+        let is_url = self.search_query.starts_with("http://") || self.search_query.starts_with("https://");
+        self.is_url_mode = is_url;
+
+        // For URL searches, we don't need pagination, so reset offset
+        if is_url {
+            self.search_offset = 1;
+            let _ = self.search_tx.send((self.search_query.clone(), 1, 1, self.current_search_id));
+        } else {
+            self.search_offset = 1;
+            let _ = self
+                .search_tx
+                .send((self.search_query.clone(), 1, 20, self.current_search_id));
+        }
     }
 
     pub fn load_more(&mut self) {
