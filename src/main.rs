@@ -167,7 +167,8 @@ async fn main() -> Result<()> {
                             let (res_tx, res_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                             app.playback_res_rx = res_rx;
 
-                            let socket_path = format!("/tmp/rataplay-mpv-{}.sock", std::process::id());
+                            let socket_path =
+                                format!("/tmp/rataplay-mpv-{}.sock", std::process::id());
 
                             tokio::spawn(async move {
                                 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -219,7 +220,8 @@ async fn main() -> Result<()> {
                             let (res_tx, res_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                             app.playback_res_rx = res_rx;
 
-                            let socket_path = format!("/tmp/rataplay-mpv-{}.sock", std::process::id());
+                            let socket_path =
+                                format!("/tmp/rataplay-mpv-{}.sock", std::process::id());
 
                             tokio::spawn(async move {
                                 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -265,7 +267,10 @@ async fn main() -> Result<()> {
                     }
                 }
                 AppAction::Download => {}
+                AppAction::DownloadPlaylist => {}
+                AppAction::DownloadSelected => {}
                 AppAction::WatchInTerminal => {} // Handled separately
+                AppAction::ViewPlaylist => {}    // Handled in App
             }
         }
 

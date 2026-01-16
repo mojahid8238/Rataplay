@@ -284,7 +284,7 @@ fn render_format_selection(
     f.render_stateful_widget(table, area, &mut state);
 }
 
-fn render_action_menu(f: &mut Frame, app: &App, area: Rect) {
+fn render_action_menu(f: &mut Frame, app: &mut App, area: Rect) {
     let block = Block::default()
         .title(" Select Action ")
         .borders(Borders::ALL)
@@ -296,11 +296,12 @@ fn render_action_menu(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(ratatui::widgets::Clear, area);
 
     let items: Vec<ListItem> = app
-        .actions
+        .get_available_actions()
         .iter()
         .map(|action| {
             let key_str = match action.key {
                 crossterm::event::KeyCode::Char(c) => c.to_string(),
+                crossterm::event::KeyCode::Enter => "Enter".to_string(), 
                 _ => "".to_string(),
             };
             let content = Line::from(vec![
@@ -398,7 +399,7 @@ fn render_search_bar(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picker) {
-    if app.search_results.is_empty() && !app.is_searching {
+    if app.search_query.is_empty() {
         render_greeting_section(f, area);
         return;
     }
@@ -414,20 +415,50 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
         .iter()
         .enumerate()
         .map(|(i, v)| {
-            let lines = vec![
-                Line::from(Span::styled(
-                    format!(" {}. {}", i + 1, &v.title),
+            let is_selected = app.selected_playlist_indices.contains(&i);
+            let checkbox = if is_selected { "[x] " } else { "[ ] " };
+
+            let title = if v.video_type == crate::model::VideoType::Playlist {
+                Span::styled(
+                    format!(" {}{}. [PLAYLIST] {}", checkbox, i + 1, &v.title),
+                    Style::default()
+                        .fg(THEME_HIGHLIGHT)
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else if v.parent_playlist_id.is_some() {
+                Span::styled(
+                    format!(" {}{}. [FROM PLAYLIST] {}", checkbox, i + 1, &v.title),
+                    Style::default()
+                        .fg(Color::Rgb(150, 220, 255))
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else {
+                Span::styled(
+                    format!(" {}{}. {}", checkbox, i + 1, &v.title),
                     Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD),
-                )),
-                Line::from(vec![
-                    Span::raw("    "),
-                    Span::styled(&v.channel, Style::default().fg(THEME_ACCENT)),
-                    Span::styled(
-                        format!("  •  {}", v.duration_string),
-                        Style::default().fg(Color::DarkGray),
-                    ),
-                ]),
+                )
+            };
+
+            let mut second_line_spans = vec![
+                Span::raw("      "), // Adjusted for checkbox width
+                Span::styled(&v.channel, Style::default().fg(THEME_ACCENT)),
             ];
+
+            if v.video_type == crate::model::VideoType::Playlist {
+                if let Some(count) = v.playlist_count {
+                    second_line_spans.push(Span::styled(
+                        format!("  •  {} videos", count),
+                        Style::default().fg(Color::DarkGray),
+                    ));
+                }
+            } else {
+                second_line_spans.push(Span::styled(
+                    format!("  •  {}", v.duration_string),
+                    Style::default().fg(Color::DarkGray),
+                ));
+            }
+
+            let lines = vec![Line::from(title), Line::from(second_line_spans)];
             ListItem::new(lines).style(Style::default().fg(THEME_FG))
         })
         .collect();
@@ -454,7 +485,11 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(THEME_BORDER))
-                .title(" Results "),
+                .title(if let Some((parent, _, _)) = app.playlist_stack.last() {
+                    format!(" Playlist: {} ", parent.title)
+                } else {
+                    " Results ".to_string()
+                }),
         )
         .highlight_style(
             Style::default()
@@ -495,119 +530,196 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                     f.render_stateful_widget(image, layout[0], &mut protocol);
 
                     // Details Text
-                    let views = video.view_count.unwrap_or(0);
-                    let views_fmt = if views > 1_000_000 {
-                        format!("{:.1}M", views as f64 / 1_000_000.0)
-                    } else if views > 1_000 {
-                        format!("{:.1}K", views as f64 / 1_000.0)
+                    if video.video_type == crate::model::VideoType::Playlist {
+                        let text_lines = vec![
+                            Line::from(vec![
+                                Span::styled(
+                                    "Playlist: ",
+                                    Style::default()
+                                        .fg(THEME_ACCENT)
+                                        .add_modifier(Modifier::BOLD),
+                                ),
+                                Span::styled(&video.title, Style::default().fg(THEME_FG)),
+                            ]),
+                            Line::from(vec![
+                                Span::styled(
+                                    "Channel: ",
+                                    Style::default()
+                                        .fg(THEME_ACCENT)
+                                        .add_modifier(Modifier::BOLD),
+                                ),
+                                Span::styled(&video.channel, Style::default().fg(THEME_FG)),
+                            ]),
+                            Line::from(vec![
+                                Span::styled(
+                                    "Videos: ",
+                                    Style::default()
+                                        .fg(THEME_ACCENT)
+                                        .add_modifier(Modifier::BOLD),
+                                ),
+                                Span::styled(
+                                    video.playlist_count.unwrap_or(0).to_string(),
+                                    Style::default().fg(THEME_FG),
+                                ),
+                            ]),
+                            Line::from(""),
+                            Line::from(vec![Span::styled(
+                                " [ TYPE: PLAYLIST ] ",
+                                Style::default()
+                                    .fg(Color::Black)
+                                    .bg(THEME_HIGHLIGHT)
+                                    .add_modifier(Modifier::BOLD),
+                            )]),
+                        ];
+                        let p = Paragraph::new(text_lines).block(
+                            Block::default()
+                                .borders(Borders::NONE)
+                                .padding(ratatui::widgets::Padding::left(1)),
+                        );
+                        f.render_widget(p, layout[1]);
                     } else {
-                        views.to_string()
-                    };
+                        let views = video.view_count.unwrap_or(0);
+                        let views_fmt = if views > 1_000_000 {
+                            format!("{:.1}M", views as f64 / 1_000_000.0)
+                        } else if views > 1_000 {
+                            format!("{:.1}K", views as f64 / 1_000.0)
+                        } else {
+                            views.to_string()
+                        };
 
-                    let mut text_lines = vec![
-                        Line::from(vec![
-                            Span::styled(
-                                "Title: ",
-                                Style::default()
-                                    .fg(THEME_ACCENT)
-                                    .add_modifier(Modifier::BOLD),
-                            ),
-                            Span::styled(&video.title, Style::default().fg(THEME_FG)),
-                        ]),
-                        Line::from(vec![
-                            Span::styled(
-                                "Channel: ",
-                                Style::default()
-                                    .fg(THEME_ACCENT)
-                                    .add_modifier(Modifier::BOLD),
-                            ),
-                            Span::styled(&video.channel, Style::default().fg(THEME_FG)),
-                        ]),
-                        Line::from(vec![
-                            Span::styled(
-                                "Duration: ",
-                                Style::default()
-                                    .fg(THEME_ACCENT)
-                                    .add_modifier(Modifier::BOLD),
-                            ),
-                            Span::styled(&video.duration_string, Style::default().fg(THEME_FG)),
-                        ]),
-                        Line::from(vec![
-                            Span::styled(
-                                "Views: ",
-                                Style::default()
-                                    .fg(THEME_ACCENT)
-                                    .add_modifier(Modifier::BOLD),
-                            ),
-                            Span::styled(views_fmt, Style::default().fg(THEME_FG)),
-                        ]),
-                    ];
+                        let mut text_lines = vec![
+                            Line::from(vec![
+                                Span::styled(
+                                    "Title: ",
+                                    Style::default()
+                                        .fg(THEME_ACCENT)
+                                        .add_modifier(Modifier::BOLD),
+                                ),
+                                Span::styled(&video.title, Style::default().fg(THEME_FG)),
+                            ]),
+                            Line::from(vec![
+                                Span::styled(
+                                    "Channel: ",
+                                    Style::default()
+                                        .fg(THEME_ACCENT)
+                                        .add_modifier(Modifier::BOLD),
+                                ),
+                                Span::styled(&video.channel, Style::default().fg(THEME_FG)),
+                            ]),
+                            Line::from(vec![
+                                Span::styled(
+                                    "Duration: ",
+                                    Style::default()
+                                        .fg(THEME_ACCENT)
+                                        .add_modifier(Modifier::BOLD),
+                                ),
+                                Span::styled(&video.duration_string, Style::default().fg(THEME_FG)),
+                            ]),
+                            Line::from(vec![
+                                Span::styled(
+                                    "Views: ",
+                                    Style::default()
+                                        .fg(THEME_ACCENT)
+                                        .add_modifier(Modifier::BOLD),
+                                ),
+                                Span::styled(views_fmt, Style::default().fg(THEME_FG)),
+                            ]),
+                        ];
 
-                    if !video.is_partial {
-                        let upload_date = format_upload_date(video.upload_date.as_deref());
-                        text_lines.push(Line::from(vec![
-                            Span::styled(
-                                "Uploaded: ",
-                                Style::default()
-                                    .fg(THEME_ACCENT)
-                                    .add_modifier(Modifier::BOLD),
-                            ),
-                            Span::styled(upload_date, Style::default().fg(THEME_FG)),
-                        ]));
+                        if !video.is_partial {
+                            let upload_date = format_upload_date(video.upload_date.as_deref());
+                            text_lines.push(Line::from(vec![
+                                Span::styled(
+                                    "Uploaded: ",
+                                    Style::default()
+                                        .fg(THEME_ACCENT)
+                                        .add_modifier(Modifier::BOLD),
+                                ),
+                                Span::styled(upload_date, Style::default().fg(THEME_FG)),
+                            ]));
+
+                            // Show playlist info if available
+                            if let Some(playlist_title) = &video.parent_playlist_title {
+                                text_lines.push(Line::from(""));
+                                text_lines.push(Line::from(vec![
+                                    Span::styled(
+                                        "From Playlist: ",
+                                        Style::default()
+                                            .fg(THEME_ACCENT)
+                                            .add_modifier(Modifier::BOLD),
+                                    ),
+                                    Span::styled(playlist_title, Style::default().fg(THEME_FG)),
+                                ]));
+                            }
+                        }
+
+                        let p = Paragraph::new(text_lines).block(
+                            Block::default()
+                                .borders(Borders::NONE)
+                                .padding(ratatui::widgets::Padding::left(1)),
+                        );
+                        f.render_widget(p, layout[1]);
                     }
-
-                    let p = Paragraph::new(text_lines).block(
-                        Block::default()
-                            .borders(Borders::NONE)
-                            .padding(ratatui::widgets::Padding::left(1)),
-                    );
-                    f.render_widget(p, layout[1]);
                 } else {
                     // No image yet
-                    let views_str = if let Some(v) = video.view_count {
-                        if v > 1_000_000 {
-                            format!("{:.1}M", v as f64 / 1_000_000.0)
-                        } else if v > 1_000 {
-                            format!("{:.1}K", v as f64 / 1_000.0)
-                        } else {
-                            v.to_string()
+                    if video.video_type == crate::model::VideoType::Playlist {
+                        let mut lines = vec![
+                            format!("Playlist: {}", video.title),
+                            format!("Channel: {}", video.channel),
+                        ];
+                        if let Some(count) = video.playlist_count {
+                            lines.push(format!("Videos: {}", count));
                         }
-                    } else if video.is_partial {
-                        "Loading...".to_string()
+                        lines.push(String::new());
+                        lines.push("(Loading Thumbnail...)".to_string());
+                        let p = Paragraph::new(lines.join("\n"));
+                        f.render_widget(p, inner_area);
                     } else {
-                        "N/A".to_string()
-                    };
+                        let views_str = if let Some(v) = video.view_count {
+                            if v > 1_000_000 {
+                                format!("{:.1}M", v as f64 / 1_000_000.0)
+                            } else if v > 1_000 {
+                                format!("{:.1}K", v as f64 / 1_000.0)
+                            } else {
+                                v.to_string()
+                            }
+                        } else if video.is_partial {
+                            "Loading...".to_string()
+                        } else {
+                            "N/A".to_string()
+                        };
 
-                    let upload_str = if video.is_partial {
-                        String::new() // Don't show uploaded if partial
-                    } else if video.upload_date.is_some() {
-                        format_upload_date(video.upload_date.as_deref())
-                    } else {
-                        "Unknown".to_string()
-                    };
+                        let upload_str = if video.is_partial {
+                            String::new() // Don't show uploaded if partial
+                        } else if video.upload_date.is_some() {
+                            format_upload_date(video.upload_date.as_deref())
+                        } else {
+                            "Unknown".to_string()
+                        };
 
-                    let status_msg = if video.is_partial {
-                        "(Fetching Details...)"
-                    } else {
-                        "(Loading Thumbnail...)"
-                    };
+                        let status_msg = if video.is_partial {
+                            "(Fetching Details...)"
+                        } else {
+                            "(Loading Thumbnail...)"
+                        };
 
-                    let mut lines = vec![
-                        format!("Title: {}", video.title),
-                        format!("Channel: {}", video.channel),
-                        format!("Duration: {}", video.duration_string),
-                        format!("Views: {}", views_str),
-                    ];
+                        let mut lines = vec![
+                            format!("Title: {}", video.title),
+                            format!("Channel: {}", video.channel),
+                            format!("Duration: {}", video.duration_string),
+                            format!("Views: {}", views_str),
+                        ];
 
-                    if !video.is_partial {
-                        lines.push(format!("Uploaded: {}", upload_str));
+                        if !video.is_partial {
+                            lines.push(format!("Uploaded: {}", upload_str));
+                        }
+
+                        lines.push(String::new());
+                        lines.push(status_msg.to_string());
+
+                        let p = Paragraph::new(lines.join("\n"));
+                        f.render_widget(p, inner_area);
                     }
-
-                    lines.push(String::new());
-                    lines.push(status_msg.to_string());
-
-                    let p = Paragraph::new(lines.join("\n"));
-                    f.render_widget(p, inner_area);
                 }
             }
         } else if !app.is_url_mode {
@@ -711,7 +823,13 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
     };
 
     let key_hints = match app.input_mode {
-        InputMode::Normal => "q: Quit | /: Search | j/k: Nav | Enter: Open",
+        InputMode::Normal => {
+            if !app.playlist_stack.is_empty() {
+                "q: Quit | /: Search | j/k: Nav | Space: Select | B: Back | Enter: Options"
+            } else {
+                "q: Quit | /: Search | j/k: Nav | Enter: Open"
+            }
+        }
         InputMode::Editing => "Esc: Normal Mode | Enter: Search",
         InputMode::Loading => "Please wait...",
     };

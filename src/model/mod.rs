@@ -10,11 +10,21 @@ pub struct Video {
     pub thumbnail_url: Option<String>,
     pub view_count: Option<u64>,
     pub upload_date: Option<String>,
+    pub playlist_count: Option<u64>,
+
     // New fields for two-stage fetching
     #[serde(default)]
     pub is_partial: bool,
     #[serde(default)]
     pub video_type: VideoType,
+
+    // Parent playlist info (for videos that belong to a playlist)
+    #[serde(default)]
+    pub parent_playlist_id: Option<String>,
+    #[serde(default)]
+    pub parent_playlist_url: Option<String>,
+    #[serde(default)]
+    pub parent_playlist_title: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -22,6 +32,7 @@ pub enum VideoType {
     #[default]
     Video,
     Channel,
+    Playlist,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

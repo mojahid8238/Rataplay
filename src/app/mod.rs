@@ -18,6 +18,9 @@ pub enum AppAction {
     WatchInTerminal,
     ListenAudio,
     Download,
+    DownloadPlaylist,
+    DownloadSelected,
+    ViewPlaylist,
 }
 
 pub struct Action {
@@ -70,7 +73,6 @@ pub struct App {
     pub status_message: Option<String>,
 
     // Actions
-    pub actions: Vec<Action>,
     pub pending_action: Option<(AppAction, String, String)>, // (Action, URL, Title)
 
     // Images
@@ -111,6 +113,10 @@ pub struct App {
     pub details_tx: UnboundedSender<Vec<String>>,
     pub details_rx: UnboundedReceiver<Result<Video, String>>,
     pub pending_resolution_ids: Vec<String>,
+
+    // Playlist / Multi-select
+    pub playlist_stack: Vec<(Video, Vec<Video>, Option<usize>)>, // (parent, children, prev_selected)
+    pub selected_playlist_indices: std::collections::HashSet<usize>,
 }
 
 impl App {
@@ -228,7 +234,6 @@ impl App {
             current_search_id: 0,
             is_url_mode: false,
             status_message: None,
-            actions: App::get_available_actions(),
             pending_action: None,
             image_tx,
             image_rx,
@@ -259,27 +264,87 @@ impl App {
             details_tx,
             details_rx,
             pending_resolution_ids: Vec::new(),
+            playlist_stack: Vec::new(),
+            selected_playlist_indices: std::collections::HashSet::new(),
         }
     }
-    fn get_available_actions() -> Vec<Action> {
-        vec![
-            Action::new(
-                KeyCode::Char('w'),
-                "Watch (External)",
-                AppAction::WatchExternal,
-            ),
-            Action::new(
-                KeyCode::Char('t'),
-                "Watch (In Terminal)",
-                AppAction::WatchInTerminal,
-            ),
-            Action::new(
-                KeyCode::Char('a'),
-                "Listen (Audio Only)",
-                AppAction::ListenAudio,
-            ),
-            Action::new(KeyCode::Char('d'), "Download", AppAction::Download),
-        ]
+    pub fn get_available_actions(&self) -> Vec<Action> {
+        let mut actions = Vec::new();
+
+        if let Some(idx) = self.selected_result_index {
+            if let Some(video) = self.search_results.get(idx) {
+                if video.video_type == crate::model::VideoType::Playlist {
+                    actions.push(Action::new(
+                        KeyCode::Enter,
+                        "Open Playlist",
+                        AppAction::ViewPlaylist,
+                    ));
+                    actions.push(Action::new(
+                        KeyCode::Char('l'),
+                        "Download All (Playlist)",
+                        AppAction::DownloadPlaylist,
+                    ));
+                } else {
+                    actions.push(Action::new(
+                        KeyCode::Char('w'),
+                        "Watch (External)",
+                        AppAction::WatchExternal,
+                    ));
+                    actions.push(Action::new(
+                        KeyCode::Char('t'),
+                        "Watch (In Terminal)",
+                        AppAction::WatchInTerminal,
+                    ));
+                    actions.push(Action::new(
+                        KeyCode::Char('a'),
+                        "Listen (Audio Only)",
+                        AppAction::ListenAudio,
+                    ));
+                    actions.push(Action::new(
+                        KeyCode::Char('d'),
+                        "Download",
+                        AppAction::Download,
+                    ));
+
+                    // If this video belongs to a playlist, add playlist options
+                    if video.parent_playlist_id.is_some() {
+                        actions.push(Action::new(
+                            KeyCode::Char('p'),
+                            "Open Parent Playlist",
+                            AppAction::ViewPlaylist,
+                        ));
+                        actions.push(Action::new(
+                            KeyCode::Char('l'),
+                            "Download All (Parent Playlist)",
+                            AppAction::DownloadPlaylist,
+                        ));
+                    }
+                }
+            }
+        }
+
+        if !self.selected_playlist_indices.is_empty() {
+            actions.push(Action::new(
+                KeyCode::Char('s'),
+                "Download Selected",
+                AppAction::DownloadSelected,
+            ));
+        }
+
+        if !self.playlist_stack.is_empty() {
+            if !actions
+                .iter()
+                .any(|a| a.action == AppAction::DownloadPlaylist)
+            {
+                actions.push(Action::new(
+                    KeyCode::Char('l'),
+                    "Download All (Current View)",
+                    AppAction::DownloadPlaylist,
+                ));
+            }
+        }
+
+        actions
     }
 
     pub fn on_tick(&mut self) {
@@ -318,7 +383,11 @@ impl App {
                             if progress >= 1.0 {
                                 self.is_searching = false;
                                 self.search_progress = None;
-                                self.status_message = Some("Results updated.".to_string());
+                                if self.search_results.is_empty() {
+                                    self.status_message = Some("No results found.".to_string());
+                                } else {
+                                    self.status_message = Some("Results updated.".to_string());
+                                }
 
                                 // Flush pending resolutions
                                 if !self.pending_resolution_ids.is_empty() {
@@ -580,17 +649,66 @@ impl App {
                         _ => {}
                     },
                     AppState::ActionMenu => {
-                        if code == KeyCode::Esc || code == KeyCode::Char('q') {
-                            self.state = AppState::Results;
-                            return;
-                        }
+                                        if code == KeyCode::Esc || code == KeyCode::Char('q') {
+                                            self.state = AppState::Results;
+                                            return;
+                                        }
+                                        self.status_message = Some(format!("ActionMenu: KeyCode {:?}, SelIdx: {:?}", code, self.selected_result_index).to_string()); // Debug 1
 
-                        if let Some(action) = self.actions.iter().find(|a| a.key == code) {
-                            if let Some(idx) = self.selected_result_index {
-                                if let Some(video) = self.search_results.get(idx) {
-                                    let url = video.url.clone();
-                                    let title = video.title.clone();
-                                    match action.action {
+                                        if let Some(action) =
+                                            self.get_available_actions().iter().find(|a| a.key == code)
+                                        {
+                                            if let Some(idx) = self.selected_result_index {
+                                                if let Some(video) = self.search_results.get(idx) {
+                                                    self.status_message = Some(format!("ActionMenu: Video type: {:?}", video.video_type).to_string()); // Debug 2
+                                                    let url = video.url.clone();
+                                                    let title = video.title.clone();
+                                                    match action.action {
+                                                                                                            AppAction::ViewPlaylist => {
+                                                                                                                self.status_message = Some("Attempting to view playlist...".to_string());
+                                                                                                                // Drill down into playlist
+                                                                                                                let (query, title) = if video.video_type == crate::model::VideoType::Playlist {
+                                                                                                                    // If the video itself is a playlist, use its ID to construct a canonical playlist URL
+                                                                                                                    (format!("https://www.youtube.com/playlist?list={}", video.id), video.title.clone())
+                                                                                                                } else if video.parent_playlist_url.is_some() {
+                                                                                                                    // If it's a video from a playlist, use its parent playlist URL
+                                                                                                                    (
+                                                                                                                        video.parent_playlist_url.clone().unwrap(),
+                                                                                                                        video
+                                                                                                                            .parent_playlist_title
+                                                                                                                            .clone()
+                                                                                                                            .unwrap_or_else(|| "Playlist".to_string()),
+                                                                                                                    )
+                                                                                                                } else {
+                                                                                                                    // Fallback to the video's own URL (should not happen for a playlist view action)
+                                                                                                                    (video.url.clone(), video.title.clone())
+                                                                                                                };
+
+                                            let parent = video.clone();
+                                            let children = std::mem::take(&mut self.search_results);
+                                            self.playlist_stack.push((
+                                                parent,
+                                                children,
+                                                self.selected_result_index,
+                                            ));
+                                            self.selected_playlist_indices.clear();
+                                            self.search_results.clear(); // Clear existing results before loading new ones
+                                            self.selected_result_index = Some(0); // Reset selection for the new playlist view
+
+                                            self.is_searching = true;
+                                            self.search_progress = Some(0.0);
+                                            self.current_search_id += 1;
+                                            let _ = self.search_tx.send((
+                                                query,
+                                                1,
+                                                100, // Fetch more for playlists
+                                                self.current_search_id,
+                                            ));
+                                            self.status_message =
+                                                Some(format!("Loading playlist: {}...", title));
+                                            self.state = AppState::Results;
+                                            return;
+                                        }
                                         AppAction::Download => {
                                             // Trigger Format Fetch
                                             let _ = self.format_tx.send(url);
@@ -601,6 +719,58 @@ impl App {
                                         AppAction::WatchInTerminal => {
                                             self.stop_playback();
                                             self.start_terminal_loading(url, title);
+                                            self.state = AppState::Results;
+                                        }
+                                        AppAction::DownloadSelected => {
+                                            let selected_urls: Vec<String> = self
+                                                .selected_playlist_indices
+                                                .iter()
+                                                .filter_map(|&idx| self.search_results.get(idx))
+                                                .map(|v| v.url.clone())
+                                                .collect();
+
+                                            if selected_urls.is_empty() {
+                                                self.status_message =
+                                                    Some("No videos selected.".to_string());
+                                            } else {
+                                                for url in selected_urls {
+                                                    let _ = self
+                                                        .download_tx
+                                                        .send((url, "best".to_string()));
+                                                }
+                                                self.status_message =
+                                                    Some("Starting downloads...".to_string());
+                                                self.state = AppState::Results;
+                                            }
+                                        }
+                                        AppAction::DownloadPlaylist => {
+                                            // If this is a parent playlist download, use parent playlist URL
+                                            // Otherwise download all current search results
+                                            if let Some(parent_url) = &video.parent_playlist_url {
+                                                // Download entire parent playlist
+                                                let _ = self
+                                                    .download_tx
+                                                    .send((parent_url.clone(), "best".to_string()));
+                                                self.status_message = Some(
+                                                    "Starting parent playlist download..."
+                                                        .to_string(),
+                                                );
+                                            } else {
+                                                // Download all videos in current view
+                                                let urls: Vec<String> = self
+                                                    .search_results
+                                                    .iter()
+                                                    .map(|v| v.url.clone())
+                                                    .collect();
+                                                for url in urls {
+                                                    let _ = self
+                                                        .download_tx
+                                                        .send((url, "best".to_string()));
+                                                }
+                                                self.status_message = Some(
+                                                    "Starting playlist download...".to_string(),
+                                                );
+                                            }
                                             self.state = AppState::Results;
                                         }
                                         _ => {
@@ -634,10 +804,30 @@ impl App {
                                 }
                             }
                         }
+                        KeyCode::Backspace | KeyCode::Char('b') => {
+                            if let Some((_parent, children, prev_idx)) = self.playlist_stack.pop() {
+                                self.search_results = children;
+                                self.selected_result_index = prev_idx;
+                                self.selected_playlist_indices.clear();
+                                self.status_message =
+                                    Some("Returned to search results.".to_string());
+                            }
+                        }
+                        KeyCode::Char(' ') => {
+                            if let Some(idx) = self.selected_result_index {
+                                if idx < self.search_results.len() {
+                                    if self.selected_playlist_indices.contains(&idx) {
+                                        self.selected_playlist_indices.remove(&idx);
+                                    } else {
+                                        self.selected_playlist_indices.insert(idx);
+                                    }
+                                }
+                            }
+                        }
                         KeyCode::Char('x') => {
                             self.stop_playback();
                         }
-                        KeyCode::Char('p') | KeyCode::Char(' ') => {
+                        KeyCode::Char('p') => {
                             self.toggle_pause();
                         }
                         KeyCode::Left => {
@@ -779,20 +969,44 @@ impl App {
         self.input_mode = InputMode::Normal;
         self.search_results.clear();
         self.selected_result_index = None;
+        self.playlist_stack.clear();
+        self.selected_playlist_indices.clear();
         self.search_progress = Some(0.0);
         self.is_searching = true;
         self.current_search_id += 1;
         self.status_message = Some(format!("Searching for '{}'...", self.search_query));
 
-        let is_url = self.search_query.starts_with("http://") || self.search_query.starts_with("https://");
+        let is_url =
+            self.search_query.starts_with("http://") || self.search_query.starts_with("https://");
         self.is_url_mode = is_url;
 
-        // For URL searches, we don't need pagination, so reset offset
+        let mut is_direct_playlist_url = false;
         if is_url {
-            self.search_offset = 1;
-            let _ = self.search_tx.send((self.search_query.clone(), 1, 1, self.current_search_id));
+            is_direct_playlist_url = self.search_query.contains("list=")
+                || self.search_query.contains("/playlist/");
+            // Also include the broader check for playlist identifiers
+            if !is_direct_playlist_url &&
+               (self.search_query.contains("PL") || self.search_query.contains("UU") ||
+                self.search_query.contains("FL") || self.search_query.contains("RD") ||
+                self.search_query.contains("OL")) {
+                is_direct_playlist_url = true;
+            }
+        }
+
+        self.search_offset = 1; // Always reset offset for new search
+
+        if is_url && is_direct_playlist_url {
+            // For direct playlist URLs, fetch multiple items
+            let _ = self
+                .search_tx
+                .send((self.search_query.clone(), 1, 100, self.current_search_id));
+        } else if is_url {
+            // For other single item URLs
+            let _ = self
+                .search_tx
+                .send((self.search_query.clone(), 1, 1, self.current_search_id));
         } else {
-            self.search_offset = 1;
+            // For regular text searches
             let _ = self
                 .search_tx
                 .send((self.search_query.clone(), 1, 20, self.current_search_id));
