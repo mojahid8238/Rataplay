@@ -11,6 +11,7 @@ pub struct Video {
     pub view_count: Option<u64>,
     pub upload_date: Option<String>,
     pub playlist_count: Option<u64>,
+    pub live_status: Option<String>,
 
     // New fields for two-stage fetching
     #[serde(default)]

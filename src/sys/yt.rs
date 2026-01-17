@@ -80,6 +80,7 @@ pub async fn search_videos_flat(
         .context("Failed to spawn yt-dlp")?;
 
     let stdout = child.stdout.take().context("Failed to take stdout")?;
+    let _stderr = child.stderr.take().context("Failed to take stderr")?; // Capture stderr
     let mut reader = tokio::io::BufReader::new(stdout);
     let mut lines = tokio::io::AsyncBufReadExt::lines(&mut reader);
 
@@ -96,9 +97,14 @@ pub async fn search_videos_flat(
         }
 
         if let Ok(val) = serde_json::from_str::<Value>(&line) {
+            // Filter out inaccessible videos
+            if let Some(availability) = val["availability"].as_str() {
+                if availability != "public" {
+                    continue; // Skip non-public videos
+                }
+            }
+            // Also, skip if there's no usable URL
             let id = val["id"].as_str().unwrap_or_default().to_string();
-            let title = val["title"].as_str().unwrap_or_default().to_string();
-            let channel = val["uploader"].as_str().unwrap_or("Unknown").to_string();
             let mut final_url = val["url"]
                 .as_str()
                 .or_else(|| val["webpage_url"].as_str())
@@ -106,8 +112,16 @@ pub async fn search_videos_flat(
                 .to_string();
 
             if final_url.is_empty() {
+                // If url and webpage_url are empty, it's likely not a valid video to play
+                continue;
+            }
+            if final_url.is_empty() {
                 final_url = id.clone();
             }
+
+            let title = val["title"].as_str().unwrap_or_default().to_string();
+            let channel = val["uploader"].as_str().unwrap_or("Unknown").to_string();
+            
 
             let item_type_str = val["_type"].as_str().unwrap_or("video");
             let is_playlist_url = final_url.contains("list=") || final_url.contains("/playlist/");
@@ -163,6 +177,9 @@ pub async fn search_videos_flat(
                     view_count,
                 )
             };
+
+            // Extract live_status before thumbnail extraction for easier access
+            let live_status = val["live_status"].as_str().map(|s| s.to_string());
 
             // Extract thumbnail based on determined video_type
             let thumbnail: Option<String> = if video_type == crate::model::VideoType::Playlist {
@@ -266,6 +283,7 @@ pub async fn search_videos_flat(
                 view_count,
                 upload_date,
                 playlist_count,
+                live_status,
                 is_partial: true,
                 video_type,
                 parent_playlist_id,
@@ -281,7 +299,14 @@ pub async fn search_videos_flat(
         }
     }
 
-    let _ = child.wait().await;
+    let output = child.wait_with_output().await?; // Await child and capture output
+
+    if !output.status.success() {
+        let err_msg = String::from_utf8_lossy(&output.stderr);
+        let _ = tx.send(Err(format!("yt-dlp error: {}", err_msg)));
+        anyhow::bail!("yt-dlp exited with error: {}", err_msg);
+    }
+    
     let _ = tx.send(Ok(SearchResult::Progress(1.0)));
     Ok(())
 }
@@ -310,10 +335,24 @@ pub async fn resolve_video_details(
     let mut reader = tokio::io::BufReader::new(stdout);
     let mut lines = tokio::io::AsyncBufReadExt::lines(&mut reader);
 
+    let mut collected_output = Vec::new(); // Collect output lines to re-process if needed
     while let Some(line) = lines.next_line().await? {
         if line.trim().is_empty() {
             continue;
         }
+        collected_output.push(line);
+    }
+
+    let output = child.wait_with_output().await?;
+
+    if !output.status.success() {
+        let err_msg = String::from_utf8_lossy(&output.stderr);
+        let _ = tx.send(Err(format!("yt-dlp error: {}", err_msg)));
+        anyhow::bail!("yt-dlp exited with error: {}", err_msg);
+    }
+
+    // Now process the collected output
+    for line in collected_output {
         if let Ok(val) = serde_json::from_str::<Value>(&line) {
             let id = val["id"].as_str().unwrap_or_default().to_string();
             let title = val["title"].as_str().unwrap_or_default().to_string();
@@ -347,6 +386,8 @@ pub async fn resolve_video_details(
                     (None, None, None)
                 };
 
+            let live_status = val["live_status"].as_str().map(|s| s.to_string());
+
             let video = Video {
                 id,
                 title,
@@ -362,6 +403,7 @@ pub async fn resolve_video_details(
                 parent_playlist_id,
                 parent_playlist_url,
                 parent_playlist_title,
+                live_status,
             };
             if tx.send(Ok(video)).is_err() {
                 // Receiver dropped, so we can stop.
@@ -377,8 +419,6 @@ pub async fn resolve_video_details(
             }
         }
     }
-
-    child.wait().await?;
 
     Ok(())
 }

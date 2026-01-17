@@ -423,6 +423,27 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                         .fg(THEME_HIGHLIGHT)
                         .add_modifier(Modifier::BOLD),
                 )
+            } else if let Some(live_status) = &v.live_status {
+                if live_status == "is_live" {
+                    Span::styled(
+                        format!(" {}{}. [LIVE NOW] {}", checkbox, i + 1, &v.title),
+                        Style::default()
+                            .fg(Color::Red) // Live streams are often red
+                            .add_modifier(Modifier::BOLD),
+                    )
+                } else if live_status == "was_live" {
+                    Span::styled(
+                        format!(" {}{}. [WAS LIVE] {}", checkbox, i + 1, &v.title),
+                        Style::default()
+                            .fg(Color::DarkGray)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                } else {
+                    Span::styled(
+                        format!(" {}{}. {}", checkbox, i + 1, &v.title),
+                        Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD),
+                    )
+                }
             } else if v.parent_playlist_id.is_some() {
                 Span::styled(
                     format!(" {}{}. [FROM PLAYLIST] {}", checkbox, i + 1, &v.title),
@@ -580,7 +601,7 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                             ]),
                             Line::from(""), // Added spacing
                             Line::from(vec![Span::styled(
-                                " [ TYPE: PLAYLIST ] ",
+                                " [ PLAYLIST ] ",
                                 Style::default()
                                     .fg(Color::Black)
                                     .bg(THEME_HIGHLIGHT)
@@ -622,7 +643,11 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                                 ),
                                 Span::styled(&video.channel, Style::default().fg(THEME_FG)),
                             ]),
-                            Line::from(vec![
+                        ];
+                        
+                        // Only show Duration and Views if it's not a live stream (currently live)
+                        if video.live_status.as_deref() != Some("is_live") {
+                            text_lines.push(Line::from(vec![
                                 Span::styled(
                                     "Duration: ",
                                     Style::default()
@@ -630,8 +655,8 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                                         .add_modifier(Modifier::BOLD),
                                 ),
                                 Span::styled(&video.duration_string, Style::default().fg(THEME_FG)),
-                            ]),
-                            Line::from(vec![
+                            ]));
+                            text_lines.push(Line::from(vec![
                                 Span::styled(
                                     "Views: ",
                                     Style::default()
@@ -639,8 +664,8 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                                         .add_modifier(Modifier::BOLD),
                                 ),
                                 Span::styled(views_fmt, Style::default().fg(THEME_FG)),
-                            ]),
-                        ];
+                            ]));
+                        }
 
                         if !video.is_partial {
                             let upload_date = format_upload_date(video.upload_date.as_deref());
@@ -665,6 +690,26 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                                     ),
                                     Span::styled(playlist_title, Style::default().fg(THEME_FG)),
                                 ]));
+                            }
+                        }
+
+                        // Add Live Status Tag if available
+                        if let Some(live_status_str) = &video.live_status {
+                            let tag_text = match live_status_str.as_str() {
+                                "is_live" => Some(" [ LIVE NOW ] "),
+                                "was_live" => Some(" [ WAS LIVE ] "),
+                                _ => None, // Do not show "not_live" or other statuses
+                            };
+
+                            if let Some(text) = tag_text {
+                                text_lines.push(Line::from("")); // Spacing before the tag
+                                text_lines.push(Line::from(vec![Span::styled(
+                                    text,
+                                    Style::default()
+                                        .fg(Color::Black)
+                                        .bg(Color::Red) // Red background for live
+                                        .add_modifier(Modifier::BOLD),
+                                )]));
                             }
                         }
 
