@@ -344,7 +344,6 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
                 Constraint::Percentage(percent_y),
                 Constraint::Percentage((100 - percent_y) / 2),
             ]
-            .as_ref(),
         )
         .split(r);
 
@@ -356,7 +355,6 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
                 Constraint::Percentage(percent_x),
                 Constraint::Percentage((100 - percent_x) / 2),
             ]
-            .as_ref(),
         )
         .split(popup_layout[1])[1]
 }
@@ -406,7 +404,7 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
 
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(45), Constraint::Percentage(55)].as_ref())
+        .constraints([Constraint::Percentage(65), Constraint::Percentage(35)])
         .split(area);
 
     // Left: Results List
@@ -518,18 +516,36 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
             if let Some(video) = app.search_results.get(idx) {
                 // Check for image
                 if let Some(img) = app.image_cache.get(&video.id) {
-                    // Render image
+                    let original_img_width = img.width();
+                    let original_img_height = img.height();
+
+                    let available_width_for_image_cells = inner_area.width;
+                    
+                    // Terminal cells are approx 2:1 (Height:Width). 
+                    // We multiply by 0.5 to account for the fact that 1 row is as tall as 2 columns are wide.
+                    let mut calculated_height = ((original_img_height as f64 / original_img_width as f64) * available_width_for_image_cells as f64 * 0.5).round() as u16;
+                    
+                    // Limit the height so the image doesn't take over the whole screen on vertical monitors
+                    calculated_height = calculated_height.clamp(2, 18);
+
+
+
                     let layout = Layout::default()
                         .direction(Direction::Vertical)
-                        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                        .constraints([   
+                            Constraint::Length(calculated_height), // layout[0]
+                            Constraint::Length(1),                // layout[1] - THE BLANK LINE
+                            Constraint::Min(0),                   // layout[2] - THE DETAILS
+                        ])
                         .split(inner_area);
 
                     // If resize fails or protocol fails, we just don't render or it renders empty/block
                     let mut protocol = picker.new_resize_protocol(img.clone());
-                    let image = ratatui_image::StatefulImage::new(None);
+                    let image = ratatui_image::StatefulImage::new();
                     f.render_stateful_widget(image, layout[0], &mut protocol);
 
                     // Details Text
+                    let details_area = layout[2];
                     if video.video_type == crate::model::VideoType::Playlist {
                         let text_lines = vec![
                             Line::from(vec![
@@ -562,7 +578,7 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                                     Style::default().fg(THEME_FG),
                                 ),
                             ]),
-                            Line::from(""),
+                            Line::from(""), // Added spacing
                             Line::from(vec![Span::styled(
                                 " [ TYPE: PLAYLIST ] ",
                                 Style::default()
@@ -576,7 +592,7 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                                 .borders(Borders::NONE)
                                 .padding(ratatui::widgets::Padding::left(1)),
                         );
-                        f.render_widget(p, layout[1]);
+                        f.render_widget(p, details_area);
                     } else {
                         let views = video.view_count.unwrap_or(0);
                         let views_fmt = if views > 1_000_000 {
@@ -637,10 +653,9 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                                 ),
                                 Span::styled(upload_date, Style::default().fg(THEME_FG)),
                             ]));
-
+                            text_lines.push(Line::from("")); // Added spacing after Uploaded
                             // Show playlist info if available
                             if let Some(playlist_title) = &video.parent_playlist_title {
-                                text_lines.push(Line::from(""));
                                 text_lines.push(Line::from(vec![
                                     Span::styled(
                                         "From Playlist: ",
@@ -658,7 +673,7 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                                 .borders(Borders::NONE)
                                 .padding(ratatui::widgets::Padding::left(1)),
                         );
-                        f.render_widget(p, layout[1]);
+                        f.render_widget(p, details_area);
                     }
                 } else {
                     // No image yet
@@ -739,13 +754,13 @@ fn render_greeting_section(f: &mut Frame, area: Rect) {
     let text = vec![
         Line::from(vec![
             Span::styled(
-                "V",
+                "R",
                 Style::default()
                     .fg(THEME_HIGHLIGHT)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                "ivid",
+                "ataplay",
                 Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD),
             ),
         ]),
