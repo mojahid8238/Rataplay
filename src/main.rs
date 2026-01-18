@@ -1,10 +1,13 @@
 mod app;
+mod cli;
 mod model;
 mod sys;
 mod tui;
 
 use anyhow::Result;
 use app::{App, AppAction};
+use clap::Parser;
+use cli::Cli;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event},
     event::{DisableBracketedPaste, EnableBracketedPaste},
@@ -21,6 +24,8 @@ use std::{
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let args = Cli::parse();
+
     // Set panic hook to restore terminal
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
@@ -144,6 +149,12 @@ async fn main() -> Result<()> {
 
     // Create App
     let mut app = App::new();
+
+    // Handle startup query if provided
+    if let Some(query) = args.query {
+        app.search_query = query;
+        app.perform_search();
+    }
 
     // Main Loop
     let tick_rate = Duration::from_millis(250);

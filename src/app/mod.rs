@@ -1626,7 +1626,7 @@ impl App {
         }
     }
 
-    fn perform_search(&mut self) {
+    pub fn perform_search(&mut self) {
         if self.search_query.trim().is_empty() {
             return;
         }
