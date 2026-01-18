@@ -11,7 +11,7 @@ use ratatui_image::picker::Picker;
 const THEME_BG: Color = Color::Rgb(20, 20, 25); // Dark slate/blue
 const THEME_FG: Color = Color::Rgb(220, 220, 240); // Soft white
 const THEME_ACCENT: Color = Color::Rgb(100, 200, 255); // Cyan-ish
-const THEME_HIGHLIGHT: Color = Color::Rgb(255, 100, 200); // Pink/Magenta
+const THEME_HIGHLIGHT: Color = Color::Rgb(230, 30, 30); // YouTube Red
 const THEME_BORDER: Color = Color::Rgb(80, 80, 120); // Muted blue-purple
 
 pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
@@ -306,10 +306,10 @@ fn render_format_selection(
     .row_highlight_style(
         Style::default()
             .bg(THEME_HIGHLIGHT)
-            .fg(Color::Black)
+            .fg(THEME_FG)
             .add_modifier(Modifier::BOLD),
     )
-    .highlight_symbol(">>");
+    .highlight_symbol("┃ ");
 
     let mut state = TableState::default();
     state.select(selected_index);
@@ -354,11 +354,11 @@ fn render_action_menu(f: &mut Frame, app: &mut App, area: Rect) {
         .block(block)
         .highlight_style(
             Style::default()
-                .bg(THEME_ACCENT)
-                .fg(Color::Black)
+                .bg(THEME_HIGHLIGHT)
+                .fg(THEME_FG)
                 .add_modifier(Modifier::BOLD),
         )
-        .highlight_symbol(">>");
+        .highlight_symbol("┃ ");
 
     let mut state = ListState::default();
     // In a real app, you might want to manage the selected action index in App state
@@ -425,6 +425,40 @@ fn render_search_bar(f: &mut Frame, app: &App, area: Rect) {
     }
 }
 
+fn get_width(s: &str) -> usize {
+    // This is a simplified version of unicode-width. 
+    // It's not perfect but better than chars().count() for common cases.
+    s.chars().map(|c| {
+        let cp = c as u32;
+        // Basic check for common wide characters/emojis
+        if (0x1F300..=0x1F9FF).contains(&cp) || (0x2600..=0x26FF).contains(&cp) {
+            2
+        } else {
+            1
+        }
+    }).sum()
+}
+
+fn truncate_str(s: &str, max_width: usize) -> String {
+    if get_width(s) <= max_width {
+        return s.to_string();
+    }
+    
+    let mut result = String::new();
+    let mut current_width = 0;
+    
+    for c in s.chars() {
+        let w = get_width(&c.to_string());
+        if current_width + w + 3 > max_width {
+            result.push_str("...");
+            break;
+        }
+        result.push(c);
+        current_width += w;
+    }
+    result
+}
+
 fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picker) {
     if app.search_query.is_empty() {
         render_greeting_section(f, area);
@@ -444,6 +478,8 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
     };
 
     // Left: Results List
+    let list_inner_width = chunks[0].width.saturating_sub(6) as usize; // More conservative to protect borders
+
     let mut items: Vec<ListItem> = app
         .search_results
         .iter()
@@ -451,52 +487,66 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
         .map(|(i, v)| {
             let is_selected = app.selected_playlist_indices.contains(&i);
             let checkbox = if is_selected { "[x] " } else { "[ ] " };
+            let index_prefix = format!(" {}{}. ", checkbox, i + 1);
+            let prefix_len = index_prefix.chars().count();
 
-            let title = if v.video_type == crate::model::VideoType::Playlist {
-                Span::styled(
-                    format!(" {}{}. [PLAYLIST] {}", checkbox, i + 1, &v.title),
-                    Style::default()
-                        .fg(THEME_HIGHLIGHT)
-                        .add_modifier(Modifier::BOLD),
-                )
+            let title_line = if v.video_type == crate::model::VideoType::Playlist {
+                let tag = "[PLAYLIST] ";
+                let avail = list_inner_width.saturating_sub(prefix_len + tag.len());
+                let display_title = truncate_str(&v.title, avail);
+                Line::from(vec![
+                    Span::styled(index_prefix, Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD)),
+                    Span::styled(tag, Style::default().fg(THEME_HIGHLIGHT).add_modifier(Modifier::BOLD)),
+                    Span::styled(display_title, Style::default().fg(THEME_HIGHLIGHT).add_modifier(Modifier::BOLD)),
+                ])
             } else if let Some(live_status) = &v.live_status {
-                if live_status == "is_live" {
-                    Span::styled(
-                        format!(" {}{}. [LIVE NOW] {}", checkbox, i + 1, &v.title),
-                        Style::default()
-                            .fg(Color::Red) // Live streams are often red
-                            .add_modifier(Modifier::BOLD),
-                    )
+                let tag = if live_status == "is_live" {
+                    "[LIVE NOW] "
                 } else if live_status == "was_live" {
-                    Span::styled(
-                        format!(" {}{}. [WAS LIVE] {}", checkbox, i + 1, &v.title),
-                        Style::default()
-                            .fg(Color::DarkGray)
-                            .add_modifier(Modifier::BOLD),
-                    )
+                    "[WAS LIVE] "
                 } else {
-                    Span::styled(
-                        format!(" {}{}. {}", checkbox, i + 1, &v.title),
-                        Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD),
-                    )
-                }
+                    ""
+                };
+                let tag_color = if live_status == "is_live" { Color::Red } else { Color::DarkGray };
+                
+                let avail = list_inner_width.saturating_sub(prefix_len + tag.len());
+                let display_title = truncate_str(&v.title, avail);
+
+                Line::from(vec![
+                    Span::styled(index_prefix, Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD)),
+                    if !tag.is_empty() {
+                        Span::styled(tag, Style::default().fg(tag_color).add_modifier(Modifier::BOLD))
+                    } else {
+                        Span::raw("")
+                    },
+                    Span::styled(display_title, Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD)),
+                ])
             } else if v.parent_playlist_id.is_some() {
-                Span::styled(
-                    format!(" {}{}. [FROM PLAYLIST] {}", checkbox, i + 1, &v.title),
-                    Style::default()
-                        .fg(Color::Rgb(150, 220, 255))
-                        .add_modifier(Modifier::BOLD),
-                )
+                let tag = "[FROM PLAYLIST] ";
+                let avail = list_inner_width.saturating_sub(prefix_len + tag.len());
+                let display_title = truncate_str(&v.title, avail);
+
+                Line::from(vec![
+                    Span::styled(index_prefix, Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD)),
+                    Span::styled(tag, Style::default().fg(Color::Rgb(150, 220, 255)).add_modifier(Modifier::BOLD)),
+                    Span::styled(display_title, Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD)),
+                ])
             } else {
-                Span::styled(
-                    format!(" {}{}. {}", checkbox, i + 1, &v.title),
-                    Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD),
-                )
+                let avail = list_inner_width.saturating_sub(prefix_len);
+                let display_title = truncate_str(&v.title, avail);
+
+                Line::from(vec![
+                    Span::styled(index_prefix, Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD)),
+                    Span::styled(display_title, Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD)),
+                ])
             };
+
+            let channel_avail = list_inner_width.saturating_sub(6 + 15); // "      " + room for duration/viewers
+            let display_channel = truncate_str(&v.channel, channel_avail);
 
             let mut second_line_spans = vec![ 
                 Span::raw("      "), // Adjusted for checkbox width
-                Span::styled(&v.channel, Style::default().fg(THEME_ACCENT)),
+                Span::styled(display_channel, Style::default().fg(THEME_ACCENT)),
             ];
 
             if v.video_type == crate::model::VideoType::Playlist {
@@ -532,7 +582,7 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                 ));
             }
 
-            let lines = vec![Line::from(title), Line::from(second_line_spans)];
+            let lines = vec![title_line, Line::from(second_line_spans)];
             ListItem::new(lines).style(Style::default().fg(THEME_FG))
         })
         .collect();
@@ -568,14 +618,14 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
         .highlight_style(if app.state == AppState::Results {
             Style::default()
                 .bg(THEME_HIGHLIGHT)
-                .fg(Color::Black)
+                .fg(THEME_FG)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default()
                 .bg(Color::Rgb(40, 40, 50))
                 .fg(Color::Gray)
         })
-        .highlight_symbol(Span::styled(">>", Style::default().fg(if app.state == AppState::Results { THEME_HIGHLIGHT } else { Color::DarkGray })));
+        .highlight_symbol(Span::styled("┃ ", Style::default().fg(if app.state == AppState::Results { THEME_HIGHLIGHT } else { Color::DarkGray })));
 
     let mut state = ListState::default();
     state.select(app.selected_result_index);
@@ -675,11 +725,13 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                                         .add_modifier(Modifier::BOLD),
                                 )])
                             ];
-                            let p = Paragraph::new(text_lines).block(
-                                Block::default()
-                                    .borders(Borders::NONE)
-                                    .padding(ratatui::widgets::Padding::left(1)),
-                            );
+                            let p = Paragraph::new(text_lines)
+                                .wrap(Wrap { trim: true })
+                                .block(
+                                    Block::default()
+                                        .borders(Borders::NONE)
+                                        .padding(ratatui::widgets::Padding::left(1)),
+                                );
                             f.render_widget(p, details_area);
                         } else {
                             let views = video.view_count.unwrap_or(0);
@@ -799,11 +851,13 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                                 }
                             }
 
-                            let p = Paragraph::new(text_lines).block(
-                                Block::default()
-                                    .borders(Borders::NONE)
-                                    .padding(ratatui::widgets::Padding::left(1)),
-                            );
+                            let p = Paragraph::new(text_lines)
+                                .wrap(Wrap { trim: true })
+                                .block(
+                                    Block::default()
+                                        .borders(Borders::NONE)
+                                        .padding(ratatui::widgets::Padding::left(1)),
+                                );
                             f.render_widget(p, details_area);
                         }
                     } else {
@@ -818,7 +872,7 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                             }
                             lines.push(String::new());
                             lines.push("(Loading Thumbnail...)".to_string());
-                            let p = Paragraph::new(lines.join("\n"));
+                            let p = Paragraph::new(lines.join("\n")).wrap(Wrap { trim: true });
                             f.render_widget(p, inner_area);
                         } else {
                             let views_str = if let Some(v) = video.view_count {
@@ -863,7 +917,7 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                             lines.push(String::new());
                             lines.push(status_msg.to_string());
 
-                            let p = Paragraph::new(lines.join("\n"));
+                            let p = Paragraph::new(lines.join("\n")).wrap(Wrap { trim: true });
                             f.render_widget(p, inner_area);
                         }
                     }
@@ -1055,7 +1109,7 @@ fn render_active_downloads(f: &mut Frame, app: &mut App, area: Rect) {
         })
         .map(|(i, task)| {
             let is_focused = app.state == AppState::Downloads && app.selected_download_index == Some(i);
-            let indicator = if is_focused { "> " } else { "  " };
+            let indicator = if is_focused { "┃ " } else { "  " };
             let checkbox = if app.selected_download_indices.contains(&i) { "[x] " } else { "[ ] " };
 
             let status_span = match &task.status {
@@ -1078,13 +1132,16 @@ fn render_active_downloads(f: &mut Frame, app: &mut App, area: Rect) {
             };
 
             let row_style = if is_focused {
-                Style::default().bg(THEME_HIGHLIGHT).fg(Color::Black).add_modifier(Modifier::BOLD)
+                Style::default().bg(THEME_HIGHLIGHT).fg(THEME_FG).add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
 
+            let title_avail = (area.width as f64 * 0.3).round() as usize; 
+            let display_title = truncate_str(&task.title, title_avail.saturating_sub(6));
+
             Row::new(vec![
-                Cell::from(format!("{}{}{}", indicator, checkbox, task.title.clone())),
+                Cell::from(format!("{}{}{}", indicator, checkbox, display_title)),
                 Cell::from(task.total_size.clone()),
                 Cell::from(create_progress_bar_string(
                     task.progress,
@@ -1152,7 +1209,7 @@ fn render_local_files(f: &mut Frame, app: &mut App, area: Rect) {
             let is_focused = app.state == AppState::Downloads && app.selected_local_file_index == Some(i);
             let is_selected = app.selected_local_file_indices.contains(&i);
             
-            let indicator = if is_focused { "> " } else { "  " };
+            let indicator = if is_focused { "┃ " } else { "  " };
             let checkbox = if is_selected { "[x] " } else { "[ ] " };
 
             let status_span = if file.is_garbage {
@@ -1162,13 +1219,16 @@ fn render_local_files(f: &mut Frame, app: &mut App, area: Rect) {
             };
 
             let row_style = if is_focused {
-                Style::default().bg(THEME_HIGHLIGHT).fg(Color::Black).add_modifier(Modifier::BOLD)
+                Style::default().bg(THEME_HIGHLIGHT).fg(THEME_FG).add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
 
+            let name_avail = (area.width as f64 * 0.5).round() as usize;
+            let display_name = truncate_str(&file.name, name_avail.saturating_sub(6));
+
             Row::new(vec![
-                Cell::from(format!("{}{}{}", indicator, checkbox, file.name.clone())),
+                Cell::from(format!("{}{}{}", indicator, checkbox, display_name)),
                 Cell::from(file.size.clone()),
                 Cell::from(file.extension.clone()),
                 Cell::from(status_span),

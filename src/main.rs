@@ -30,9 +30,9 @@ async fn main() -> Result<()> {
             stdout,
             LeaveAlternateScreen,
             DisableMouseCapture,
-            DisableBracketedPaste
+            DisableBracketedPaste,
+            crossterm::cursor::Show
         );
-        let _ = execute!(stdout, crossterm::cursor::Show);
         original_hook(panic_info);
     }));
 
@@ -329,19 +329,24 @@ async fn main() -> Result<()> {
     }.await;
 
     // Restore Terminal
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture,
-        DisableBracketedPaste
-    )?;
-    terminal.show_cursor()?;
     app.stop_playback();
+    cleanup_terminal(&mut terminal)?;
 
     if let Err(err) = run_result {
         eprintln!("Application error: {}", err);
     }
 
+    Ok(())
+}
+
+fn cleanup_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
+    disable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture,
+        DisableBracketedPaste,
+        crossterm::cursor::Show
+    )?;
     Ok(())
 }
