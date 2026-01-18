@@ -9,6 +9,7 @@ pub enum DownloadStatus {
     Downloading,
     Paused,
     Canceled,
+    #[allow(dead_code)]
     Finished,
     Error(String),
 }

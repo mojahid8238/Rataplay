@@ -12,6 +12,7 @@ pub struct Video {
     pub duration_string: String, // e.g. "10:05"
     pub thumbnail_url: Option<String>,
     pub view_count: Option<u64>,
+    pub concurrent_view_count: Option<u64>,
     pub upload_date: Option<String>,
     pub playlist_count: Option<u64>,
     pub live_status: Option<String>,

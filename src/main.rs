@@ -1,10 +1,13 @@
 mod app;
+mod cli;
 mod model;
 mod sys;
 mod tui;
 
 use anyhow::Result;
 use app::{App, AppAction};
+use clap::Parser;
+use cli::Cli;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event},
     event::{DisableBracketedPaste, EnableBracketedPaste},
@@ -21,6 +24,8 @@ use std::{
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let args = Cli::parse();
+
     // Set panic hook to restore terminal
     let original_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
@@ -30,9 +35,9 @@ async fn main() -> Result<()> {
             stdout,
             LeaveAlternateScreen,
             DisableMouseCapture,
-            DisableBracketedPaste
+            DisableBracketedPaste,
+            crossterm::cursor::Show
         );
-        let _ = execute!(stdout, crossterm::cursor::Show);
         original_hook(panic_info);
     }));
 
@@ -144,6 +149,12 @@ async fn main() -> Result<()> {
 
     // Create App
     let mut app = App::new();
+
+    // Handle startup query if provided
+    if let Some(query) = args.query {
+        app.search_query = query;
+        app.perform_search();
+    }
 
     // Main Loop
     let tick_rate = Duration::from_millis(250);
@@ -329,19 +340,24 @@ async fn main() -> Result<()> {
     }.await;
 
     // Restore Terminal
-    disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture,
-        DisableBracketedPaste
-    )?;
-    terminal.show_cursor()?;
     app.stop_playback();
+    cleanup_terminal(&mut terminal)?;
 
     if let Err(err) = run_result {
         eprintln!("Application error: {}", err);
     }
 
+    Ok(())
+}
+
+fn cleanup_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Result<()> {
+    disable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture,
+        DisableBracketedPaste,
+        crossterm::cursor::Show
+    )?;
     Ok(())
 }

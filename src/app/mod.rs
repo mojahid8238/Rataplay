@@ -652,11 +652,6 @@ impl App {
                     }
                     match item {
                         yt::SearchResult::Video(video) => {
-                            let is_partial = video.is_partial;
-                            if is_partial && video.video_type == crate::model::VideoType::Video {
-                                self.pending_resolution_ids.push(video.url.clone());
-                            }
-
                             // Trigger image download if thumbnail exists, even if partial
                             if let Some(url) = &video.thumbnail_url {
                                 if !self.image_cache.contains(&video.id) {
@@ -702,20 +697,30 @@ impl App {
             }
         }
 
-        // Flush pending resolutions periodically (e.g. if we have > 5 items)
-        if self.pending_resolution_ids.len() >= 5 {
-            let items: Vec<String> = self.pending_resolution_ids.drain(..).collect();
-            let _ = self.details_tx.send(items);
+        // Resolve details for the currently selected item if it's partial
+        if let Some(idx) = self.selected_result_index {
+            if let Some(video) = self.search_results.get(idx) {
+                if video.is_partial && video.video_type == crate::model::VideoType::Video {
+                    if !self.pending_resolution_ids.contains(&video.url) {
+                        self.pending_resolution_ids.push(video.url.clone());
+                        let _ = self.details_tx.send(vec![video.url.clone()]);
+                    }
+                }
+            }
         }
 
         // Apply resolved details
         while let Ok(res) = self.details_rx.try_recv() {
             match res {
                 Ok(v) => {
+                    let url = v.url.clone();
                     // Find and replace in search_results
                     if let Some(existing) = self.search_results.iter_mut().find(|x| x.id == v.id) {
                         *existing = v;
                     }
+                    // Remove from pending
+                    self.pending_resolution_ids.retain(|x| x != &url);
+                    
                     // Trigger image request for selection again if needed
                     self.request_image_for_selection();
                 }
@@ -1621,7 +1626,7 @@ impl App {
         }
     }
 
-    fn perform_search(&mut self) {
+    pub fn perform_search(&mut self) {
         if self.search_query.trim().is_empty() {
             return;
         }
