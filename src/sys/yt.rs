@@ -42,6 +42,9 @@ pub async fn search_videos_flat(
         vec![
             "--dump-json",
             "--flat-playlist",
+            "--lazy-playlist",
+            "--no-check-formats",
+            "--ignore-errors",
             "--no-warnings",
             "--playlist-start",
             &start_str,
@@ -54,6 +57,8 @@ pub async fn search_videos_flat(
         vec![
             "--dump-json",
             "--flat-playlist", // still useful for channels/users
+            "--no-check-formats",
+            "--ignore-errors",
             "--no-warnings",
             "--playlist-end", // Limit to 1 item to get its metadata
             "1", // Always 1 for direct video URL
@@ -63,6 +68,8 @@ pub async fn search_videos_flat(
         vec![
             "--dump-json",
             "--flat-playlist",
+            "--no-check-formats",
+            "--ignore-errors",
             "--no-warnings",
             "--playlist-start", // Added to fetch a specific range
             &start_str,
@@ -98,25 +105,34 @@ pub async fn search_videos_flat(
 
         if let Ok(val) = serde_json::from_str::<Value>(&line) {
             // Filter out inaccessible videos
+            let title = val["title"].as_str().unwrap_or_default().to_string();
+            let id = val["id"].as_str().unwrap_or_default().to_string();
+
+            // Skip if it's a known placeholder for inaccessible videos
+            if title == "[Private video]" || title == "[Deleted video]" || title.is_empty() || id.is_empty() {
+                continue;
+            }
+
             if let Some(availability) = val["availability"].as_str() {
-                if availability != "public" {
-                    continue; // Skip non-public videos
+                if availability != "public" && availability != "unlisted" {
+                    continue; // Skip non-public/unlisted videos
                 }
             }
+
             // Also, skip if there's no usable URL
-            let id = val["id"].as_str().unwrap_or_default().to_string();
             let mut final_url = val["url"]
                 .as_str()
                 .or_else(|| val["webpage_url"].as_str())
                 .unwrap_or("")
                 .to_string();
 
+            if final_url.is_empty() && !id.is_empty() {
+                final_url = format!("https://www.youtube.com/watch?v={}", id);
+            }
+
             if final_url.is_empty() {
                 // If url and webpage_url are empty, it's likely not a valid video to play
                 continue;
-            }
-            if final_url.is_empty() {
-                final_url = id.clone();
             }
 
             let title = val["title"].as_str().unwrap_or_default().to_string();
@@ -124,8 +140,8 @@ pub async fn search_videos_flat(
             
 
             let item_type_str = val["_type"].as_str().unwrap_or("video");
-            let is_playlist_url = final_url.contains("list=") || final_url.contains("/playlist/");
-
+            
+            // For entries in a playlist, final_url might contain 'list=' but we want to check if it's primarily a video
             // Check if this is a real YouTube playlist ID (not just a search query)
             let playlist_id_str = val["playlist_id"].as_str().unwrap_or("");
             let is_real_playlist_id = playlist_id_str.starts_with("PL")
@@ -135,51 +151,46 @@ pub async fn search_videos_flat(
                 || playlist_id_str.starts_with("OL");
 
             // Determine video_type before thumbnail extraction
-            let (video_type, _playlist_count, _duration_string, _view_count) = if item_type_str
-                == "playlist"
-                || item_type_str == "multi_video"
-                || (item_type_str == "url" && val["ie_key"].as_str() == Some("YoutubeTab"))
-                // Existing condition: if final_url contains list= or /playlist/
-                || (is_playlist_url
-                    && (item_type_str == "url" || item_type_str == "url_transparent"))
-                // Existing condition: if yt-dlp gives a playlist_id that looks real
-                || (is_real_playlist_id
-                    && (item_type_str == "url" || item_type_str == "url_transparent"))
-                // NEW: If final_url contains a known playlist identifier and it's a generic URL type,
-                // and it wasn't already caught by is_playlist_url (which checks for 'list=' or '/playlist/')
-                // or is_real_playlist_id (which checks val["playlist_id"])
-                || (!is_playlist_url && !is_real_playlist_id && // This ensures we don't double count if it's already detected
-                    (final_url.contains("PL") || final_url.contains("UU") ||
-                     final_url.contains("FL") || final_url.contains("RD") ||
-                     final_url.contains("OL")) &&
-                    (item_type_str == "url" || item_type_str == "url_transparent"))
-            {
+            let (video_type, playlist_count, duration_string, view_count, concurrent_view_count) = if item_type_str == "playlist" || item_type_str == "multi_video" {
                 let count = val["playlist_count"]
                     .as_u64()
                     .or_else(|| val["n_entries"].as_u64());
                 let duration_str = format!("{} videos", count.unwrap_or(0));
-                (crate::model::VideoType::Playlist, count, duration_str, None)
+                (crate::model::VideoType::Playlist, count, duration_str, None, None)
             } else if item_type_str == "channel" {
                 (
                     crate::model::VideoType::Channel,
                     None,
                     "N/A".to_string(),
                     None,
+                    None,
                 )
+            } else if (item_type_str == "url" || item_type_str == "url_transparent") && val["ie_key"].as_str() == Some("YoutubeTab") && (final_url.contains("list=") || final_url.contains("/playlist/")) {
+                // This handles playlist references in search results
+                 let count = val["playlist_count"]
+                    .as_u64()
+                    .or_else(|| val["n_entries"].as_u64());
+                let duration_str = format!("{} videos", count.unwrap_or(0));
+                (crate::model::VideoType::Playlist, count, duration_str, None, None)
             } else {
-                // Video
+                // Default to Video
                 let duration = val["duration"].as_f64().unwrap_or(0.0);
                 let view_count = val["view_count"].as_u64();
+                let concurrent_view_count = val["concurrent_view_count"].as_u64();
                 (
                     crate::model::VideoType::Video,
                     None,
                     format_duration(duration),
                     view_count,
+                    concurrent_view_count,
                 )
             };
 
             // Extract live_status before thumbnail extraction for easier access
             let live_status = val["live_status"].as_str().map(|s| s.to_string());
+            if live_status.as_deref() == Some("is_upcoming") {
+                continue;
+            }
 
             // Extract thumbnail based on determined video_type
             let thumbnail: Option<String> = if video_type == crate::model::VideoType::Playlist {
@@ -215,39 +226,6 @@ pub async fn search_videos_flat(
             };
             let upload_date = val["upload_date"].as_str().map(|s| s.to_string());
 
-            let (video_type, playlist_count, duration_string, view_count) = if item_type_str
-                == "playlist"
-                || item_type_str == "multi_video"
-                || (item_type_str == "url" && val["ie_key"].as_str() == Some("YoutubeTab"))
-                || (is_playlist_url
-                    && (item_type_str == "url" || item_type_str == "url_transparent"))
-                || (is_real_playlist_id
-                    && (item_type_str == "url" || item_type_str == "url_transparent"))
-            {
-                let count = val["playlist_count"]
-                    .as_u64()
-                    .or_else(|| val["n_entries"].as_u64());
-                let duration_str = format!("{} videos", count.unwrap_or(0));
-                (crate::model::VideoType::Playlist, count, duration_str, None)
-            } else if item_type_str == "channel" {
-                (
-                    crate::model::VideoType::Channel,
-                    None,
-                    "N/A".to_string(),
-                    None,
-                )
-            } else {
-                // Video
-                let duration = val["duration"].as_f64().unwrap_or(0.0);
-                let view_count = val["view_count"].as_u64();
-                (
-                    crate::model::VideoType::Video,
-                    None,
-                    format_duration(duration),
-                    view_count,
-                )
-            };
-
             if video_type == crate::model::VideoType::Playlist {
                 // Prioritize canonical playlist URL using playlist_id if available
                 if !playlist_id_str.is_empty() {
@@ -281,6 +259,7 @@ pub async fn search_videos_flat(
                 duration_string,
                 thumbnail_url: thumbnail,
                 view_count,
+                concurrent_view_count,
                 upload_date,
                 playlist_count,
                 live_status,
@@ -361,6 +340,7 @@ pub async fn resolve_video_details(
             let duration = val["duration"].as_f64().unwrap_or(0.0);
             let thumbnail = val["thumbnail"].as_str().map(|s| s.to_string());
             let view_count = val["view_count"].as_u64();
+            let concurrent_view_count = val["concurrent_view_count"].as_u64();
             let upload_date = val["upload_date"].as_str().map(|s| s.to_string());
 
             let duration_string = format_duration(duration);
@@ -396,6 +376,7 @@ pub async fn resolve_video_details(
                 duration_string,
                 thumbnail_url: thumbnail,
                 view_count,
+                concurrent_view_count,
                 upload_date,
                 playlist_count: None,
                 is_partial: false,

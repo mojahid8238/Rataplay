@@ -506,6 +506,25 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                         Style::default().fg(Color::DarkGray),
                     ));
                 }
+            } else if v.live_status.as_deref() == Some("is_live") {
+                if let Some(viewers) = v.concurrent_view_count {
+                    let viewers_fmt = if viewers > 1_000_000 {
+                        format!("{:.1}M", viewers as f64 / 1_000_000.0)
+                    } else if viewers > 1_000 {
+                        format!("{:.1}K", viewers as f64 / 1_000.0)
+                    } else {
+                        viewers.to_string()
+                    };
+                    second_line_spans.push(Span::styled(
+                        format!("  •  {} watching", viewers_fmt),
+                        Style::default().fg(Color::Red),
+                    ));
+                } else {
+                    second_line_spans.push(Span::styled(
+                        "  •  LIVE",
+                        Style::default().fg(Color::Red),
+                    ));
+                }
             } else {
                 second_line_spans.push(Span::styled(
                     format!("  •  {}", v.duration_string),
@@ -694,7 +713,26 @@ fn render_main_area(f: &mut Frame, app: &mut App, area: Rect, picker: &mut Picke
                             ];
 
                             // Only show Duration and Views if it's not a live stream (currently live)
-                            if video.live_status.as_deref() != Some("is_live") {
+                            if video.live_status.as_deref() == Some("is_live") {
+                                if let Some(viewers) = video.concurrent_view_count {
+                                    let viewers_fmt = if viewers > 1_000_000 {
+                                        format!("{:.1}M", viewers as f64 / 1_000_000.0)
+                                    } else if viewers > 1_000 {
+                                        format!("{:.1}K", viewers as f64 / 1_000.0)
+                                    } else {
+                                        viewers.to_string()
+                                    };
+                                    text_lines.push(Line::from(vec![
+                                        Span::styled(
+                                            "Watching: ",
+                                            Style::default()
+                                                .fg(THEME_ACCENT)
+                                                .add_modifier(Modifier::BOLD),
+                                        ),
+                                        Span::styled(viewers_fmt, Style::default().fg(Color::Red)),
+                                    ]));
+                                }
+                            } else {
                                 text_lines.push(Line::from(vec![
                                     Span::styled(
                                         "Duration: ",
