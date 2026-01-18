@@ -2,9 +2,14 @@ use anyhow::Result;
 use std::process::Stdio;
 use tokio::process::{Child, Command};
 
+fn is_audio_path(path: &str) -> bool {
+    let audio_exts = [".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".aac", ".wma"];
+    let path_lower = path.to_lowercase();
+    audio_exts.iter().any(|ext| path_lower.ends_with(ext))
+}
+
 pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>) -> Result<Child> {
     let mut cmd = Command::new("mpv");
-    cmd.arg(url);
     cmd.kill_on_drop(true);
 
     if let Some(ua) = user_agent {
@@ -16,6 +21,12 @@ pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>) -> Res
     if in_terminal {
         cmd.arg("--vo=tct");
         cmd.arg("--really-quiet");
+        
+        if is_audio_path(url) {
+            // For audio in terminal, show a simple visualizer or just the OSC
+            cmd.arg("--force-window=no");
+        }
+
         // Buffering and speed flags
         cmd.arg("--cache=yes");
         cmd.arg("--cache-secs=2");
@@ -29,11 +40,20 @@ pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>) -> Res
         let socket_path = format!("/tmp/rataplay-mpv-{}.sock", std::process::id());
         cmd.arg(format!("--input-ipc-server={}", socket_path));
         cmd.arg("--idle=yes");
+        cmd.arg("--force-window=yes");
+        cmd.arg("--fs");
+
+        if is_audio_path(url) {
+            // Add visualizer for audio files in external window
+            cmd.arg("--lavfi-complex=[aid1]asplit[ao][v];[v]showwaves=s=1280x720:mode=line:colors=cyan[vo]");
+        }
+
         cmd.stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
     }
 
+    cmd.arg(url);
     let child = cmd.spawn()?;
     Ok(child)
 }

@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+pub mod download;
+pub mod local;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Video {
     pub id: String,

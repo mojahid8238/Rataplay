@@ -1,8 +1,14 @@
+use crate::model::download::{DownloadEvent, DownloadTask};
 use crate::model::Video;
-use crate::sys::{image as sys_image, yt};
+use crate::model::local::LocalFile;
+use crate::sys::{image as sys_image, yt, local};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use image::DynamicImage;
+use lru::LruCache;
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
+
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -11,7 +17,6 @@ pub enum InputMode {
     Editing,
     Loading, // Added Loading state
 }
-
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum AppAction {
     WatchExternal,
@@ -21,77 +26,108 @@ pub enum AppAction {
     DownloadPlaylist,
     DownloadSelected,
     ViewPlaylist,
+    // Local Actions
+    PlayLocalExternal,
+    PlayLocalTerminal, // Placeholder, maybe same as external or specialized
+    PlayLocalAudio,    // Placeholder
+    DeleteLocalFile,
+    DeleteSelectedLocalFiles,
+    CleanupLocalGarbage,
+    CancelSelectedDownloads,
+    CancelDownload,
+    ResumeDownload,
+    ResumeSelectedDownloads,
 }
-
 pub struct Action {
     pub key: KeyCode,
     pub name: &'static str,
     pub action: AppAction,
 }
-
 impl Action {
     pub fn new(key: KeyCode, name: &'static str, action: AppAction) -> Self {
         Self { key, name, action }
     }
 }
-
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum AppState {
     Search,
     Results,
     ActionMenu,
     FormatSelection,
+    Downloads,
 }
 
+#[derive(Debug)]
+pub enum DownloadControl {
+    Pause(String), // id
+    Resume(String), // id
+    Cancel(String), // id
+}
+pub struct DownloadManager {
+    pub tasks: HashMap<String, DownloadTask>,
+    pub task_order: Vec<String>,
+}
+
+impl DownloadManager {
+    pub fn new() -> Self {
+        Self {
+            tasks: HashMap::new(),
+            task_order: Vec::new(),
+        }
+    }
+
+    pub fn add_task(&mut self, video: &Video, format_id: &str) {
+        let task = DownloadTask::new(video.clone(), format_id.to_string());
+        self.tasks.insert(video.id.clone(), task);
+        self.task_order.push(video.id.clone());
+    }
+}
 pub struct App {
     pub running: bool,
     pub input_mode: InputMode,
     pub state: AppState,
-
+    pub previous_app_state: AppState,
     // Search
     pub search_query: String,
     pub cursor_position: usize,
-
     // Results
     pub search_results: Vec<Video>,
     pub selected_result_index: Option<usize>,
-
     // Async Communication
     pub search_tx: UnboundedSender<(String, u32, u32, usize)>, // query, start, end, search_id
     pub result_rx: UnboundedReceiver<Result<(yt::SearchResult, usize), String>>,
-
     // Search Progress
     pub search_progress: Option<f32>,
     pub search_offset: u32,
     pub is_searching: bool,
     pub current_search_id: usize,
-
     // If the current search was a direct URL
     pub is_url_mode: bool,
-
     // Messages/Status
     pub status_message: Option<String>,
-
     // Actions
     pub pending_action: Option<(AppAction, String, String)>, // (Action, URL, Title)
-
     // Images
     pub image_tx: UnboundedSender<(String, String)>, // (ID, URL)
     pub image_rx: UnboundedReceiver<(String, DynamicImage)>,
-    pub image_cache: std::collections::HashMap<String, DynamicImage>,
-
+    pub image_cache: LruCache<String, DynamicImage>,
     // Download / Formats
     pub format_tx: UnboundedSender<String>, // URL
     pub format_rx: UnboundedReceiver<Result<Vec<crate::model::VideoFormat>, String>>,
     pub formats: Vec<crate::model::VideoFormat>,
     pub selected_format_index: Option<usize>,
-
     // Background Download
-    pub download_tx: UnboundedSender<(String, String)>, // URL, FormatID
-    pub download_rx: UnboundedReceiver<crate::sys::download::DownloadProgress>,
-    pub download_progress: Option<f32>,
-    pub download_status: Option<String>,
-
+    pub download_manager: DownloadManager,
+    pub new_download_tx: UnboundedSender<(Video, String)>, // Video, FormatID
+    pub download_event_rx: UnboundedReceiver<DownloadEvent>,
+    pub download_control_tx: UnboundedSender<DownloadControl>,
+    pub selected_download_index: Option<usize>,
+    pub selected_download_indices: std::collections::HashSet<usize>,
+    // Local Files
+    pub local_files: Vec<LocalFile>,
+    pub selected_local_file_index: Option<usize>,
+    pub selected_local_file_indices: std::collections::HashSet<usize>,
+    
     // Playback
     pub playback_process: Option<tokio::process::Child>,
     pub playback_cmd_tx: Option<UnboundedSender<String>>,
@@ -117,6 +153,7 @@ pub struct App {
     // Playlist / Multi-select
     pub playlist_stack: Vec<(Video, Vec<Video>, Option<usize>)>, // (parent, children, prev_selected)
     pub selected_playlist_indices: std::collections::HashSet<usize>,
+    pub show_downloads_panel: bool,
 }
 
 impl App {
@@ -182,25 +219,142 @@ impl App {
             }
         });
 
-        let (download_tx, mut download_cmd_rx) = mpsc::unbounded_channel::<(String, String)>();
-        let (download_prog_tx, download_rx) = mpsc::unbounded_channel();
+        let (new_download_tx, mut new_download_cmd_rx) = mpsc::unbounded_channel::<(Video, String)>();
+        let (download_event_tx, download_event_rx) = mpsc::unbounded_channel();
+        let (download_control_tx, mut download_control_rx) = mpsc::unbounded_channel::<DownloadControl>();
 
+        use libc::{kill, SIGSTOP, SIGCONT, SIGTERM};
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        use std::collections::HashMap;
+
+        // Spawn a background task to handle download requests and control messages
         tokio::spawn(async move {
-            while let Some((url, format_id)) = download_cmd_rx.recv().await {
-                // We create a new channel for each download OR just share one?
-                // Sharing one is easier for single download at a time.
-                // But we need to pass a clone of download_prog_tx
-                let tx = download_prog_tx.clone();
-                tokio::spawn(async move {
-                    if let Err(e) =
-                        crate::sys::download::download_video(url, format_id, tx.clone()).await
-                    {
-                        let _ =
-                            tx.send(crate::sys::download::DownloadProgress::Error(e.to_string()));
+            // Map video_id to its PID for control (pause/resume/cancel)
+            let mut active_downloads_pids: HashMap<String, u32> = HashMap::new();
+
+            loop {
+                tokio::select! {
+                    // Handle new download requests
+                    res = new_download_cmd_rx.recv() => {
+                        if let Some((video, format_id)) = res {
+                            let event_tx = download_event_tx.clone();
+                            let video_id = video.id.clone();
+                            let mut child = match crate::sys::download::start_download(&video, &format_id).await {
+                                Ok(child) => child,
+                                Err(e) => {
+                                    let _ = event_tx.send(DownloadEvent::Error(video_id.clone(), e.to_string()));
+                                    continue;
+                                }
+                            };
+                            let pid = child.id().expect("Failed to get child process ID");
+                            let _ = event_tx.send(DownloadEvent::Started(video_id.clone(), pid));
+
+                            active_downloads_pids.insert(video_id.clone(), pid);
+
+                            // Spawn a separate task to monitor this specific download's stdout/stderr and status
+                            let monitor_event_tx = event_tx.clone();
+                            tokio::spawn(async move {
+                                let stdout = child
+                                    .stdout
+                                    .take()
+                                    .expect("child did not have a handle to stdout");
+                                let stderr = child
+                                    .stderr
+                                    .take()
+                                    .expect("child did not have a handle to stderr");
+
+                                let mut stdout_reader = BufReader::new(stdout).lines();
+                                let mut stderr_reader = BufReader::new(stderr).lines();
+
+                                let mut last_progress_update = Instant::now();
+                                let min_update_interval = Duration::from_millis(500);
+
+                                loop {
+                                    tokio::select! {
+                                        Ok(Some(line)) = stdout_reader.next_line() => {
+                                            if let Some((progress, total_size, speed, eta)) =
+                                                crate::sys::download::parse_progress(&line)
+                                            {
+                                                if last_progress_update.elapsed() >= min_update_interval {
+                                                    let _ = monitor_event_tx.send(DownloadEvent::Update(
+                                                        video_id.clone(),
+                                                        progress,
+                                                        speed,
+                                                        eta,
+                                                        total_size,
+                                                    ));
+                                                    last_progress_update = Instant::now();
+                                                }
+                                            } else {
+                                                // eprintln!("yt-dlp stdout for {}: {}", video_id, line);
+                                            }
+                                        }
+                                        Ok(Some(_line)) = stderr_reader.next_line() => {
+                                            // Handle stderr messages if needed, potentially errors or warnings
+                                            // eprintln!("yt-dlp stderr for {}: {}", video_id, line);
+                                        }
+                                        status = child.wait() => {
+                                            match status {
+                                                Ok(exit_status) => {
+                                                    if exit_status.success() {
+                                                        let _ = monitor_event_tx.send(DownloadEvent::Finished(video_id.clone()));
+                                                    } else {
+                                                        let _ = monitor_event_tx.send(DownloadEvent::Error(
+                                                            video_id.clone(),
+                                                            format!("Download failed with exit code: {:?}", exit_status.code()),
+                                                        ));
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    let _ = monitor_event_tx.send(DownloadEvent::Error(
+                                                        video_id.clone(),
+                                                        format!("Failed to wait for download process: {}", e),
+                                                    ));
+                                                }
+                                            }
+                                            break; // Download process finished
+                                        }
+                                        else => break, // All streams closed and child exited
+                                    }
+                                }
+                            });
+                        } else {
+                            break;
+                        }
                     }
-                });
+                    // Handle control messages for existing downloads
+                    res = download_control_rx.recv() => {
+                        if let Some(control) = res {
+                            match control {
+                                DownloadControl::Pause(id) => {
+                                    if let Some(&pid) = active_downloads_pids.get(&id) {
+                                        let _ = unsafe { kill(pid as i32, SIGSTOP) };
+                                        let _ = download_event_tx.send(DownloadEvent::Pause(id));
+                                    }
+                                }
+                                DownloadControl::Resume(id) => {
+                                    if let Some(&pid) = active_downloads_pids.get(&id) {
+                                        let _ = unsafe { kill(pid as i32, SIGCONT) };
+                                        let _ = download_event_tx.send(DownloadEvent::Resume(id));
+                                    }
+                                }
+                                DownloadControl::Cancel(id) => {
+                                    if let Some(pid) = active_downloads_pids.remove(&id) {
+                                        let _ = unsafe { kill(pid as i32, SIGTERM) };
+                                        // The monitor task for this child will eventually send the Error/Finished event
+                                        // and clean up its own child process.
+                                        let _ = download_event_tx.send(DownloadEvent::Canceled(id));
+                                    }
+                                }
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                }
             }
         });
+
 
         let (_, playback_res_rx) = mpsc::unbounded_channel();
         let (terminal_ready_tx, terminal_ready_rx) =
@@ -218,10 +372,14 @@ impl App {
             }
         });
 
+        // Scan local files initially
+        let local_files = local::scan_local_files();
+
         Self {
             running: true,
             input_mode: InputMode::Editing,
             state: AppState::Search,
+            previous_app_state: AppState::Search,
             search_query: String::new(),
             cursor_position: 0,
             search_results: Vec::new(),
@@ -237,15 +395,20 @@ impl App {
             pending_action: None,
             image_tx,
             image_rx,
-            image_cache: HashMap::new(),
+            image_cache: LruCache::new(NonZeroUsize::new(50).unwrap()),
             format_tx,
             format_rx,
             formats: Vec::new(),
             selected_format_index: None,
-            download_tx,
-            download_rx,
-            download_progress: None,
-            download_status: None,
+            download_manager: DownloadManager::new(),
+            new_download_tx,
+            download_event_rx,
+            download_control_tx,
+            selected_download_index: None,
+            selected_download_indices: std::collections::HashSet::new(),
+            local_files,
+            selected_local_file_index: None,
+            selected_local_file_indices: std::collections::HashSet::new(),
             playback_process: None,
             playback_cmd_tx: None,
             playback_res_rx,
@@ -266,10 +429,130 @@ impl App {
             pending_resolution_ids: Vec::new(),
             playlist_stack: Vec::new(),
             selected_playlist_indices: std::collections::HashSet::new(),
+            show_downloads_panel: false,
         }
     }
+    
+    pub fn refresh_local_files(&mut self) {
+        self.local_files = local::scan_local_files();
+        if !self.local_files.is_empty() {
+             if self.selected_local_file_index.is_none() {
+                 self.selected_local_file_index = Some(0);
+             } else if let Some(idx) = self.selected_local_file_index {
+                 if idx >= self.local_files.len() {
+                     self.selected_local_file_index = Some(self.local_files.len().saturating_sub(1));
+                 }
+             }
+        } else {
+            self.selected_local_file_index = None;
+        }
+    }
+
     pub fn get_available_actions(&self) -> Vec<Action> {
         let mut actions = Vec::new();
+
+        let current_context = if self.state == AppState::ActionMenu {
+            self.previous_app_state
+        } else {
+            self.state
+        };
+
+        // Local Actions (High Priority if in Downloads view)
+        if current_context == AppState::Downloads {
+            // Actions for Local Files
+            if let Some(idx) = self.selected_local_file_index {
+                 if let Some(file) = self.local_files.get(idx) {
+                     if !file.is_garbage {
+                        actions.push(Action::new(
+                            KeyCode::Char('w'),
+                            "Play (External)",
+                            AppAction::PlayLocalExternal,
+                        ));
+                        actions.push(Action::new(
+                            KeyCode::Char('t'),
+                            "Play (Terminal/Default)",
+                            AppAction::PlayLocalTerminal, 
+                        ));
+                         actions.push(Action::new(
+                            KeyCode::Char('a'),
+                            "Play (Audio)",
+                            AppAction::PlayLocalAudio,
+                        ));
+                     }
+                     actions.push(Action::new(
+                        KeyCode::Char('x'),
+                        "Delete File",
+                        AppAction::DeleteLocalFile,
+                    ));
+                 }
+            }
+            // Actions for Active Downloads
+            if let Some(idx) = self.selected_download_index {
+                if let Some(task_id) = self.download_manager.task_order.get(idx) {
+                    if let Some(task) = self.download_manager.tasks.get(task_id) {
+                        match task.status {
+                            crate::model::download::DownloadStatus::Downloading | crate::model::download::DownloadStatus::Pending => {
+                                actions.push(Action::new(
+                                    KeyCode::Char('p'),
+                                    "Pause Download",
+                                    AppAction::ResumeDownload, 
+                                ));
+                            }
+                            crate::model::download::DownloadStatus::Paused => {
+                                actions.push(Action::new(
+                                    KeyCode::Char('p'),
+                                    "Resume Download",
+                                    AppAction::ResumeDownload,
+                                ));
+                            }
+                            crate::model::download::DownloadStatus::Canceled | crate::model::download::DownloadStatus::Error(_) => {
+                                actions.push(Action::new(
+                                    KeyCode::Char('p'),
+                                    "Restart Download",
+                                    AppAction::ResumeDownload,
+                                ));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
+                 actions.push(Action::new(
+                    KeyCode::Char('x'),
+                    "Cancel Download",
+                    AppAction::CancelDownload,
+                ));
+            }
+
+            if !self.selected_download_indices.is_empty() {
+                 actions.push(Action::new(
+                    KeyCode::Char('P'),
+                    "Resume/Restart Selected",
+                    AppAction::ResumeSelectedDownloads,
+                ));
+                 actions.push(Action::new(
+                    KeyCode::Char('X'),
+                    "Cancel Selected Downloads",
+                    AppAction::CancelSelectedDownloads,
+                ));
+            }
+
+             if !self.selected_local_file_indices.is_empty() {
+                 actions.push(Action::new(
+                    KeyCode::Char('d'),
+                    "Delete Selected",
+                    AppAction::DeleteSelectedLocalFiles,
+                ));
+             }
+             actions.push(Action::new(
+                KeyCode::Char('c'),
+                "Cleanup Garbage (.part, .ytdl)",
+                AppAction::CleanupLocalGarbage,
+            ));
+                        
+            return actions;
+        }
+
 
         if let Some(idx) = self.selected_result_index {
             if let Some(video) = self.search_results.get(idx) {
@@ -348,6 +631,18 @@ impl App {
     }
 
     pub fn on_tick(&mut self) {
+        // Periodic refresh of local files if download view is active
+        if self.show_downloads_panel && self.state == AppState::Downloads {
+             // Only refresh occasionally to save resources? 
+             // Or just check if task count changed? 
+             // For now, let's refresh every tick is too much. 
+             // We'll rely on events or manual refresh, OR refresh if download manager updates.
+             // But scanning FS is heavy. 
+             // Let's Refresh only when tasks update or via specific trigger?
+             // Actually, `on_tick` is called frequently. Let's not scan here.
+             // We can scan when entering the view.
+        }
+
         // check for search results
         while let Ok(result) = self.result_rx.try_recv() {
             match result {
@@ -364,7 +659,7 @@ impl App {
 
                             // Trigger image download if thumbnail exists, even if partial
                             if let Some(url) = &video.thumbnail_url {
-                                if !self.image_cache.contains_key(&video.id) {
+                                if !self.image_cache.contains(&video.id) {
                                     let _ = self.image_tx.send((video.id.clone(), url.clone()));
                                 }
                             }
@@ -432,14 +727,14 @@ impl App {
 
         // check for images AND trigger new downloads if necessary
         while let Ok((id, img)) = self.image_rx.try_recv() {
-            self.image_cache.insert(id, img);
+            self.image_cache.put(id, img);
         }
 
         // Trigger download for selected item if needed
         if let Some(idx) = self.selected_result_index {
             if let Some(video) = self.search_results.get(idx) {
-                if !self.image_cache.contains_key(&video.id) {
-                    if !self.image_cache.contains_key(&video.id) {
+                if !self.image_cache.contains(&video.id) {
+                    if !self.image_cache.contains(&video.id) {
                         // Logic handled in request_image_for_selection
                     }
                 }
@@ -467,25 +762,63 @@ impl App {
             }
         }
 
-        // Check for download progress
-        while let Ok(progress) = self.download_rx.try_recv() {
-            match progress {
-                crate::sys::download::DownloadProgress::Started => {
-                    self.download_progress = Some(0.0);
-                    self.download_status = Some("Starting download...".to_string());
+        // Check for download events
+        while let Ok(event) = self.download_event_rx.try_recv() {
+            match event {
+                DownloadEvent::Update(id, progress, speed, eta, total_size) => {
+                    if let Some(task) = self.download_manager.tasks.get_mut(&id) {
+                        task.status = crate::model::download::DownloadStatus::Downloading;
+                        task.progress = progress;
+                        task.speed = speed;
+                        task.eta = eta;
+                        task.total_size = total_size;
+                    }
                 }
-                crate::sys::download::DownloadProgress::Progress(pct, status) => {
-                    self.download_progress = Some(pct / 100.0);
-                    self.download_status = Some(status);
+                DownloadEvent::Finished(id) => {
+                    self.download_manager.tasks.remove(&id);
+                    self.download_manager.task_order.retain(|x| x != &id);
+                    // Clear indices because order changed
+                    self.selected_download_indices.clear();
+                    self.selected_download_index = None;
+                    
+                    // Refresh local files when a download finishes
+                     self.refresh_local_files();
                 }
-                crate::sys::download::DownloadProgress::Finished => {
-                    self.download_progress = None;
-                    self.download_status = Some("Download Complete!".to_string());
+                DownloadEvent::Error(id, error) => {
+                    if let Some(task) = self.download_manager.tasks.get_mut(&id) {
+                        // Only set to Error if not already Canceled by user
+                        if task.status != crate::model::download::DownloadStatus::Canceled {
+                            task.status = crate::model::download::DownloadStatus::Error(error);
+                        }
+                    }
                 }
-                crate::sys::download::DownloadProgress::Error(e) => {
-                    self.download_progress = None;
-                    self.download_status = Some(format!("Download Error: {}", e));
+                DownloadEvent::Started(id, pid) => {
+                    if let Some(task) = self.download_manager.tasks.get_mut(&id) {
+                        task.pid = Some(pid);
+                    }
+                    // Refresh local files to see .part file
+                    self.refresh_local_files();
                 }
+                DownloadEvent::Pause(id) => {
+                    if let Some(task) = self.download_manager.tasks.get_mut(&id) {
+                        task.status = crate::model::download::DownloadStatus::Paused;
+                    }
+                }
+                DownloadEvent::Resume(id) => {
+                    if let Some(task) = self.download_manager.tasks.get_mut(&id) {
+                        task.status = crate::model::download::DownloadStatus::Downloading;
+                    }
+                }
+                DownloadEvent::Canceled(id) => {
+                    if let Some(task) = self.download_manager.tasks.get_mut(&id) {
+                        task.status = crate::model::download::DownloadStatus::Canceled;
+                        task.speed = String::new();
+                        task.eta = String::new();
+                    }
+                    // Refresh to remove part file if deleted (though canceling might not auto-delete in all cases, mostly it stops)
+                    self.refresh_local_files();
+                }
+
             }
         }
 
@@ -625,15 +958,15 @@ impl App {
                             }
                         }
                         KeyCode::Enter => {
-                            // Download selected format
                             if let Some(idx) = self.selected_format_index {
                                 if let Some(fmt) = self.formats.get(idx) {
                                     if let Some(res_idx) = self.selected_result_index {
                                         if let Some(video) = self.search_results.get(res_idx) {
-                                            // Start background download
+                                            // Add to manager and start download
+                                            self.download_manager.add_task(video, &fmt.format_id);
                                             let _ = self
-                                                .download_tx
-                                                .send((video.url.clone(), fmt.format_id.clone()));
+                                                .new_download_tx
+                                                .send((video.clone(), fmt.format_id.clone()));
                                             self.state = AppState::Results;
                                             self.status_message =
                                                 Some("Download started...".to_string());
@@ -643,141 +976,442 @@ impl App {
                                 }
                             }
                             self.state = AppState::Results; // Return to list after download start
-                            self.status_message =
-                                Some("Download started in background...".to_string());
                         }
                         _ => {}
                     },
+                    AppState::Downloads => match code {
+                        KeyCode::Tab | KeyCode::Esc => {
+                            self.state = AppState::Results;
+                        }
+                        KeyCode::Char('q') => {
+                            self.running = false;
+                        }
+                        KeyCode::Char('b') => {
+                            self.show_downloads_panel = false;
+                            self.state = self.previous_app_state;
+                        }
+                        KeyCode::Char('/') | KeyCode::Char('s') => {
+                            self.input_mode = InputMode::Editing;
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            // If focus is on Local Files
+                            if let Some(idx) = self.selected_local_file_index {
+                                if idx > 0 {
+                                    self.selected_local_file_index = Some(idx - 1);
+                                } else if !self.download_manager.task_order.is_empty() {
+                                    // Jump up to Active Downloads
+                                    self.selected_local_file_index = None;
+                                    self.selected_download_index = Some(self.download_manager.task_order.len() - 1);
+                                }
+                            } else if let Some(idx) = self.selected_download_index {
+                                // Focus is on Active Downloads
+                                if idx > 0 {
+                                    self.selected_download_index = Some(idx - 1);
+                                }
+                            } else {
+                                // Default initialization if needed
+                                if !self.local_files.is_empty() {
+                                    self.selected_local_file_index = Some(0);
+                                } else if !self.download_manager.task_order.is_empty() {
+                                    self.selected_download_index = Some(0);
+                                }
+                            }
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            // If focus is on Active Downloads
+                            if let Some(idx) = self.selected_download_index {
+                                if idx < self.download_manager.task_order.len() - 1 {
+                                    self.selected_download_index = Some(idx + 1);
+                                } else if !self.local_files.is_empty() {
+                                    // Jump down to Local Files
+                                    self.selected_download_index = None;
+                                    self.selected_local_file_index = Some(0);
+                                }
+                            } else if let Some(idx) = self.selected_local_file_index {
+                                // Focus is on Local Files
+                                if idx < self.local_files.len().saturating_sub(1) {
+                                    self.selected_local_file_index = Some(idx + 1);
+                                }
+                            } else {
+                                // Default initialization
+                                if !self.download_manager.task_order.is_empty() {
+                                    self.selected_download_index = Some(0);
+                                } else if !self.local_files.is_empty() {
+                                    self.selected_local_file_index = Some(0);
+                                }
+                            }
+                        }
+                        KeyCode::Char(' ') => {
+                            if let Some(idx) = self.selected_download_index {
+                                if self.selected_download_indices.contains(&idx) {
+                                    self.selected_download_indices.remove(&idx);
+                                } else {
+                                    self.selected_download_indices.insert(idx);
+                                }
+                            } else if let Some(idx) = self.selected_local_file_index {
+                                if self.selected_local_file_indices.contains(&idx) {
+                                    self.selected_local_file_indices.remove(&idx);
+                                } else {
+                                    self.selected_local_file_indices.insert(idx);
+                                }
+                            }
+                        }
+                        KeyCode::Enter => {
+                             if self.selected_local_file_index.is_some() || self.selected_download_index.is_some() {
+                                 self.previous_app_state = self.state;
+                                 self.state = AppState::ActionMenu;
+                             }
+                        }
+                        // Handle direct actions for Active Downloads shortcuts if desired (p=pause, x=cancel)
+                         KeyCode::Char('p') => {
+                            let mut handled = false;
+                            if let Some(idx) = self.selected_download_index {
+                                 if let Some(task_id) = self.download_manager.task_order.get(idx) {
+                                      if let Some(task) = self.download_manager.tasks.get(task_id) {
+                                          match task.status {
+                                              crate::model::download::DownloadStatus::Downloading => {
+                                                  let _ = self.download_control_tx.send(DownloadControl::Pause(task_id.clone()));
+                                              }
+                                              crate::model::download::DownloadStatus::Paused => {
+                                                  let _ = self.download_control_tx.send(DownloadControl::Resume(task_id.clone()));
+                                              }
+                                              crate::model::download::DownloadStatus::Canceled | crate::model::download::DownloadStatus::Error(_) => {
+                                                  // Restart canceled or failed download
+                                                  let video = task.video.clone();
+                                                  let format_id = task.format_id.clone();
+                                                  let _ = self.new_download_tx.send((video, format_id));
+                                                  
+                                                  if let Some(t) = self.download_manager.tasks.get_mut(task_id) {
+                                                      t.status = crate::model::download::DownloadStatus::Pending;
+                                                  }
+                                              }
+                                              _ => {}
+                                          }
+                                          handled = true;
+                                      }
+                                 }
+                            }
+                            if !handled {
+                                self.toggle_pause();
+                            }
+                        }
+                        KeyCode::Char('x') => {
+                             let mut handled = false;
+                             if let Some(idx) = self.selected_download_index {
+                                 if let Some(task_id) = self.download_manager.task_order.get(idx) {
+                                     let _ = self.download_control_tx.send(DownloadControl::Cancel(task_id.clone()));
+                                     handled = true;
+                                 }
+                             }
+                             if !handled {
+                                 self.stop_playback();
+                             }
+                        }
+                        KeyCode::Left => {
+                            self.seek(-5);
+                        }
+                        KeyCode::Right => {
+                            self.seek(5);
+                        }
+                        KeyCode::Char('[') => {
+                            self.seek(-30);
+                        }
+                        KeyCode::Char(']') => {
+                            self.seek(30);
+                        }
+                        _ => {} 
+                    },
                     AppState::ActionMenu => {
-                                        if code == KeyCode::Esc || code == KeyCode::Char('q') {
-                                            self.state = AppState::Results;
-                                            return;
-                                        }
-                                        self.status_message = Some(format!("ActionMenu: KeyCode {:?}, SelIdx: {:?}", code, self.selected_result_index).to_string()); // Debug 1
+                        if code == KeyCode::Esc || code == KeyCode::Char('q') {
+                            self.state = self.previous_app_state;
+                            return;
+                        }
 
-                                        if let Some(action) =
-                                            self.get_available_actions().iter().find(|a| a.key == code)
-                                        {
-                                            if let Some(idx) = self.selected_result_index {
-                                                if let Some(video) = self.search_results.get(idx) {
-                                                    self.status_message = Some(format!("ActionMenu: Video type: {:?}", video.video_type).to_string()); // Debug 2
-                                                    let url = video.url.clone();
-                                                    let title = video.title.clone();
-                                                    match action.action {
-                                                                                                            AppAction::ViewPlaylist => {
-                                                                                                                self.status_message = Some("Attempting to view playlist...".to_string());
-                                                                                                                // Drill down into playlist
-                                                                                                                let (query, title) = if video.video_type == crate::model::VideoType::Playlist {
-                                                                                                                    // If the video itself is a playlist, use its ID to construct a canonical playlist URL
-                                                                                                                    (format!("https://www.youtube.com/playlist?list={}", video.id), video.title.clone())
-                                                                                                                } else if video.parent_playlist_url.is_some() {
-                                                                                                                    // If it's a video from a playlist, use its parent playlist URL
-                                                                                                                    (
-                                                                                                                        video.parent_playlist_url.clone().unwrap(),
-                                                                                                                        video
-                                                                                                                            .parent_playlist_title
-                                                                                                                            .clone()
-                                                                                                                            .unwrap_or_else(|| "Playlist".to_string()),
-                                                                                                                    )
-                                                                                                                } else {
-                                                                                                                    // Fallback to the video's own URL (should not happen for a playlist view action)
-                                                                                                                    (video.url.clone(), video.title.clone())
-                                                                                                                };
-
-                                            let parent = video.clone();
-                                            let children = std::mem::take(&mut self.search_results);
-                                            self.playlist_stack.push((
-                                                parent,
-                                                children,
-                                                self.selected_result_index,
-                                            ));
-                                            self.selected_playlist_indices.clear();
-                                            self.search_results.clear(); // Clear existing results before loading new ones
-                                            self.selected_result_index = Some(0); // Reset selection for the new playlist view
-
-                                            self.is_searching = true;
-                                            self.search_progress = Some(0.0);
-                                            self.current_search_id += 1;
-                                            let _ = self.search_tx.send((
-                                                query,
-                                                1,
-                                                100, // Fetch more for playlists
-                                                self.current_search_id,
-                                            ));
-                                            self.status_message =
-                                                Some(format!("Loading playlist: {}...", title));
-                                            self.state = AppState::Results;
-                                            return;
+                        if let Some(action) =
+                            self.get_available_actions().iter().find(|a| a.key == code)
+                        {
+                            // HANDLE LOCAL ACTIONS
+                            match action.action {
+                                AppAction::PlayLocalExternal => {
+                                     if let Some(idx) = self.selected_local_file_index {
+                                         if let Some((path, name)) = self.local_files.get(idx).map(|f| (f.path.to_string_lossy().to_string(), f.name.clone())) {
+                                             self.stop_playback();
+                                             self.pending_action = Some((
+                                                 AppAction::WatchExternal,
+                                                 path,
+                                                 name
+                                             ));
+                                             self.state = self.previous_app_state;
+                                         }
+                                     }
+                                }
+                                AppAction::PlayLocalTerminal => {
+                                     if let Some(idx) = self.selected_local_file_index {
+                                         if let Some(file) = self.local_files.get(idx) {
+                                             let path = file.path.to_string_lossy().to_string();
+                                             let name = file.name.clone();
+                                             let is_audio = file.is_audio();
+                                             
+                                             self.stop_playback();
+                                             
+                                             if is_audio {
+                                                 // Redirect to background playback for better experience
+                                                 self.pending_action = Some((
+                                                     AppAction::ListenAudio,
+                                                     path,
+                                                     name
+                                                 ));
+                                             } else {
+                                                 // For local video files, the path is the URL
+                                                 self.terminal_ready_url = Some(path);
+                                             }
+                                             self.state = self.previous_app_state;
+                                         }
+                                     }
+                                }
+                                AppAction::PlayLocalAudio => {
+                                     if let Some(idx) = self.selected_local_file_index {
+                                         if let Some((path, name)) = self.local_files.get(idx).map(|f| (f.path.to_string_lossy().to_string(), f.name.clone())) {
+                                             self.stop_playback();
+                                             self.pending_action = Some((
+                                                 AppAction::ListenAudio,
+                                                 path,
+                                                 name
+                                             ));
+                                             self.state = self.previous_app_state;
+                                         }
+                                     }
+                                }
+                                AppAction::DeleteLocalFile => {
+                                     if let Some(idx) = self.selected_local_file_index {
+                                         if let Some(file) = self.local_files.get(idx) {
+                                             if let Err(e) = local::delete_file(&file.path) {
+                                                 self.status_message = Some(format!("Error deleting: {}", e));
+                                             } else {
+                                                 self.status_message = Some("File deleted.".to_string());
+                                                 self.refresh_local_files();
+                                             }
+                                         }
+                                     }
+                                     self.state = self.previous_app_state;
+                                }
+                                AppAction::DeleteSelectedLocalFiles => {
+                                     let indices: Vec<usize> = self.selected_local_file_indices.iter().cloned().collect();
+                                     for &idx in &indices {
+                                         if let Some(file) = self.local_files.get(idx) {
+                                             let _ = local::delete_file(&file.path);
+                                         }
+                                     }
+                                     
+                                     // If focused file was deleted, reset focus
+                                     if let Some(idx) = self.selected_local_file_index {
+                                         if indices.contains(&idx) {
+                                             self.selected_local_file_index = None;
+                                         }
+                                     }
+                                     
+                                     self.selected_local_file_indices.clear();
+                                     self.refresh_local_files();
+                                     self.status_message = Some(format!("Deleted {} files.", indices.len()));
+                                     self.state = self.previous_app_state;
+                                }
+                                AppAction::ResumeDownload => {
+                                     if let Some(idx) = self.selected_download_index {
+                                         if let Some(task_id) = self.download_manager.task_order.get(idx) {
+                                             if let Some(task) = self.download_manager.tasks.get(task_id) {
+                                                 match task.status {
+                                                     crate::model::download::DownloadStatus::Downloading => {
+                                                         let _ = self.download_control_tx.send(DownloadControl::Pause(task_id.clone()));
+                                                     }
+                                                     crate::model::download::DownloadStatus::Paused => {
+                                                         let _ = self.download_control_tx.send(DownloadControl::Resume(task_id.clone()));
+                                                     }
+                                                     crate::model::download::DownloadStatus::Canceled | crate::model::download::DownloadStatus::Error(_) => {
+                                                         let video = task.video.clone();
+                                                         let format_id = task.format_id.clone();
+                                                         let _ = self.new_download_tx.send((video, format_id));
+                                                         if let Some(t) = self.download_manager.tasks.get_mut(task_id) {
+                                                             t.status = crate::model::download::DownloadStatus::Pending;
+                                                         }
+                                                     }
+                                                     _ => {}
+                                                 }
+                                             }
+                                         }
+                                     }
+                                     self.state = self.previous_app_state;
+                                }
+                                AppAction::ResumeSelectedDownloads => {
+                                     let indices: Vec<usize> = self.selected_download_indices.iter().cloned().collect();
+                                     for idx in indices {
+                                         if let Some(task_id) = self.download_manager.task_order.get(idx) {
+                                             if let Some(task) = self.download_manager.tasks.get(task_id) {
+                                                 match task.status {
+                                                     crate::model::download::DownloadStatus::Paused => {
+                                                         let _ = self.download_control_tx.send(DownloadControl::Resume(task_id.clone()));
+                                                     }
+                                                     crate::model::download::DownloadStatus::Canceled | crate::model::download::DownloadStatus::Error(_) => {
+                                                         let video = task.video.clone();
+                                                         let format_id = task.format_id.clone();
+                                                         let _ = self.new_download_tx.send((video, format_id));
+                                                         if let Some(t) = self.download_manager.tasks.get_mut(task_id) {
+                                                             t.status = crate::model::download::DownloadStatus::Pending;
+                                                         }
+                                                     }
+                                                     _ => {}
+                                                 }
+                                             }
+                                         }
+                                     }
+                                     self.selected_download_indices.clear();
+                                     self.state = self.previous_app_state;
+                                }
+                                AppAction::CancelDownload => {
+                                     if let Some(idx) = self.selected_download_index {
+                                         if let Some(task_id) = self.download_manager.task_order.get(idx) {
+                                             let _ = self.download_control_tx.send(DownloadControl::Cancel(task_id.clone()));
+                                         }
+                                     }
+                                     self.state = self.previous_app_state;
+                                }
+                                AppAction::CancelSelectedDownloads => {
+                                     let indices: Vec<usize> = self.selected_download_indices.iter().cloned().collect();
+                                     for idx in indices {
+                                         if let Some(task_id) = self.download_manager.task_order.get(idx) {
+                                             let _ = self.download_control_tx.send(DownloadControl::Cancel(task_id.clone()));
+                                         }
+                                     }
+                                     self.selected_download_indices.clear();
+                                     self.state = self.previous_app_state;
+                                }
+                                AppAction::CleanupLocalGarbage => {
+                                    match local::cleanup_garbage() {
+                                        Ok(count) => {
+                                            self.status_message = Some(format!("Cleaned {} garbage files.", count));
+                                            self.refresh_local_files();
                                         }
-                                        AppAction::Download => {
-                                            // Trigger Format Fetch
-                                            let _ = self.format_tx.send(url);
-                                            self.input_mode = InputMode::Loading;
-                                            self.status_message =
-                                                Some("Fetching formats...".to_string());
-                                        }
-                                        AppAction::WatchInTerminal => {
-                                            self.stop_playback();
-                                            self.start_terminal_loading(url, title);
-                                            self.state = AppState::Results;
-                                        }
-                                        AppAction::DownloadSelected => {
-                                            let selected_urls: Vec<String> = self
-                                                .selected_playlist_indices
-                                                .iter()
-                                                .filter_map(|&idx| self.search_results.get(idx))
-                                                .map(|v| v.url.clone())
-                                                .collect();
-
-                                            if selected_urls.is_empty() {
-                                                self.status_message =
-                                                    Some("No videos selected.".to_string());
-                                            } else {
-                                                for url in selected_urls {
-                                                    let _ = self
-                                                        .download_tx
-                                                        .send((url, "best".to_string()));
-                                                }
-                                                self.status_message =
-                                                    Some("Starting downloads...".to_string());
-                                                self.state = AppState::Results;
-                                            }
-                                        }
-                                        AppAction::DownloadPlaylist => {
-                                            // If this is a parent playlist download, use parent playlist URL
-                                            // Otherwise download all current search results
-                                            if let Some(parent_url) = &video.parent_playlist_url {
-                                                // Download entire parent playlist
-                                                let _ = self
-                                                    .download_tx
-                                                    .send((parent_url.clone(), "best".to_string()));
-                                                self.status_message = Some(
-                                                    "Starting parent playlist download..."
-                                                        .to_string(),
-                                                );
-                                            } else {
-                                                // Download all videos in current view
-                                                let urls: Vec<String> = self
-                                                    .search_results
-                                                    .iter()
-                                                    .map(|v| v.url.clone())
-                                                    .collect();
-                                                for url in urls {
-                                                    let _ = self
-                                                        .download_tx
-                                                        .send((url, "best".to_string()));
-                                                }
-                                                self.status_message = Some(
-                                                    "Starting playlist download...".to_string(),
-                                                );
-                                            }
-                                            self.state = AppState::Results;
-                                        }
-                                        _ => {
-                                            self.pending_action = Some((action.action, url, title));
-                                            self.state = AppState::Results;
+                                        Err(e) => {
+                                            self.status_message = Some(format!("Error cleanup: {}", e));
                                         }
                                     }
+                                    self.state = self.previous_app_state;
+                                }
+                                // EXISTING ACTIONS
+                                _ => {
+                                     // ... Existing action handling ... 
+                                     if let Some(idx) = self.selected_result_index {
+                                        if let Some(video) = self.search_results.get(idx) {
+                                            let url = video.url.clone();
+                                            let title = video.title.clone();
+                                            match action.action {
+                                                AppAction::ViewPlaylist => {
+                                                    self.status_message =
+                                                        Some("Attempting to view playlist...".to_string());
+                                                    // Drill down into playlist
+                                                    let (query, title) = if video.video_type
+                                                        == crate::model::VideoType::Playlist
+                                                    {
+                                                        (
+                                                            format!("https://www.youtube.com/playlist?list={}", video.id),
+                                                            video.title.clone(),
+                                                        )
+                                                    } else if video.parent_playlist_url.is_some() {
+                                                        (
+                                                            video.parent_playlist_url.clone().unwrap(),
+                                                            video
+                                                                .parent_playlist_title
+                                                                .clone()
+                                                                .unwrap_or_else(|| "Playlist".to_string()),
+                                                        )
+                                                    } else {
+                                                        (video.url.clone(), video.title.clone())
+                                                    };
+
+                                                    let parent = video.clone();
+                                                    let children = std::mem::take(&mut self.search_results);
+                                                    self.playlist_stack.push((
+                                                        parent,
+                                                        children,
+                                                        self.selected_result_index,
+                                                    ));
+                                                    self.selected_playlist_indices.clear();
+                                                    self.search_results.clear(); // Clear existing results before loading new ones
+                                                    self.selected_result_index = Some(0); // Reset selection for the new playlist view
+
+                                                    self.is_searching = true;
+                                                    self.search_progress = Some(0.0);
+                                                    self.current_search_id += 1;
+                                                    let _ = self.search_tx.send((
+                                                        query,
+                                                        1,
+                                                        100, // Fetch more for playlists
+                                                        self.current_search_id,
+                                                    ));
+                                                    self.status_message =
+                                                        Some(format!("Loading playlist: {}...", title));
+                                                    self.state = AppState::Results;
+                                                    return;
+                                                }
+                                                AppAction::Download => {
+                                                    // Trigger Format Fetch
+                                                    let _ = self.format_tx.send(url);
+                                                    self.input_mode = InputMode::Loading;
+                                                    self.status_message =
+                                                        Some("Fetching formats...".to_string());
+                                                }
+                                                AppAction::WatchInTerminal => {
+                                                    self.stop_playback();
+                                                    self.start_terminal_loading(url, title);
+                                                    self.state = self.previous_app_state;
+                                                }
+                                                AppAction::DownloadSelected => {
+                                                     let selected_videos: Vec<Video> = self
+                                                        .selected_playlist_indices
+                                                        .iter()
+                                                        .filter_map(|&idx| self.search_results.get(idx).cloned())
+                                                        .collect();
+
+
+                                                    if selected_videos.is_empty() {
+                                                        self.status_message =
+                                                            Some("No videos selected.".to_string());
+                                                    } else {
+                                                        for video in selected_videos {
+                                                             self.download_manager.add_task(&video, "best");
+                                                            let _ = self
+                                                                .new_download_tx
+                                                                .send((video, "best".to_string()));
+                                                        }
+                                                        self.status_message =
+                                                            Some("Starting downloads...".to_string());
+                                                        self.state = self.previous_app_state;
+                                                    }
+                                                }
+                                                AppAction::DownloadPlaylist => {
+                                                    if let Some(_parent_url) = &video.parent_playlist_url {
+                                                        self.status_message = Some("Playlist download from this context is not fully implemented. Downloading current view.".to_string());
+                                                    }
+                                                    let videos: Vec<Video> = self
+                                                        .search_results
+                                                        .iter().cloned()
+                                                        .collect();
+                                                    for video in videos {
+                                                                                                           self.download_manager.add_task(&video, "best");                                                let _ = self
+                                                            .new_download_tx
+                                                            .send((video, "best".to_string()));
+                                                    }
+                                                    self.status_message =
+                                                        Some("Starting playlist download...".to_string());
+
+                                                    self.state = self.previous_app_state;
+                                                }
+                                                _ => {
+                                                    self.pending_action = Some((action.action, url, title));
+                                                    self.state = self.previous_app_state;
+                                                }
+                                            }
+                                        }
+                                     }
                                 }
                             }
                         }
@@ -785,6 +1419,31 @@ impl App {
                     _ => match code {
                         KeyCode::Char('q') => {
                             self.running = false;
+                        }
+                        KeyCode::Tab => {
+                            if self.show_downloads_panel {
+                                self.state = AppState::Downloads;
+                            }
+                        }
+                        KeyCode::Char('d') => {
+                            if self.show_downloads_panel {
+                                self.show_downloads_panel = false;
+                                self.state = self.previous_app_state;
+                            } else {
+                                self.show_downloads_panel = true;
+                                self.previous_app_state = self.state;
+                                self.state = AppState::Downloads;
+                                self.refresh_local_files(); // Refresh when opening
+                                
+                                // Prioritize active downloads focus if any exist
+                                if !self.download_manager.task_order.is_empty() {
+                                    self.selected_download_index = Some(0);
+                                    self.selected_local_file_index = None;
+                                } else if !self.local_files.is_empty() {
+                                    self.selected_download_index = None;
+                                    self.selected_local_file_index = Some(0);
+                                }
+                            }
                         }
                         KeyCode::Char('/') | KeyCode::Char('s') => {
                             self.input_mode = InputMode::Editing;
@@ -798,6 +1457,7 @@ impl App {
                         KeyCode::Enter => {
                             if let Some(idx) = self.selected_result_index {
                                 if idx < self.search_results.len() {
+                                    self.previous_app_state = self.state;
                                     self.state = AppState::ActionMenu;
                                 } else if !self.is_url_mode {
                                     self.load_more();
@@ -842,7 +1502,7 @@ impl App {
                         KeyCode::Char(']') => {
                             self.seek(30);
                         }
-                        _ => {}
+                        _ => {} // Ignore other keys in Normal state
                     },
                 }
             }
@@ -871,7 +1531,7 @@ impl App {
                                 'e' => {
                                     self.cursor_position = self.search_query.len();
                                 }
-                                _ => {}
+                                _ => {} // Ignore other control chars
                             }
                         } else {
                             self.search_query.insert(self.cursor_position, c);
@@ -907,10 +1567,10 @@ impl App {
                     KeyCode::End => {
                         self.cursor_position = self.search_query.len();
                     }
-                    KeyCode::Esc => {
+                    KeyCode::Esc | KeyCode::Tab => {
                         self.input_mode = InputMode::Normal;
                     }
-                    _ => {}
+                    _ => {} // Ignore other keys in Editing mode
                 }
             }
             InputMode::Loading => {
@@ -952,7 +1612,7 @@ impl App {
     fn request_image_for_selection(&self) {
         if let Some(idx) = self.selected_result_index {
             if let Some(video) = self.search_results.get(idx) {
-                if !self.image_cache.contains_key(&video.id) {
+                if !self.image_cache.contains(&video.id) {
                     if let Some(url) = &video.thumbnail_url {
                         let _ = self.image_tx.send((video.id.clone(), url.clone()));
                     }
