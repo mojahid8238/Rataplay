@@ -1,49 +1,25 @@
-# Maintainer: Your Name <your.email@example.com>
+# Maintainer: Mojahid <mojahid8238@gmail.com>
 pkgname=rataplay
-_pkgname=Rataplay
-pkgver=r8.038166d
+pkgver=1.1.0
 pkgrel=1
-pkgdesc="A high-performance Rust TUI orchestrating yt-dlp and mpv (Renamed to vivid-tui)"
-arch=('x86_64' 'aarch64')
+pkgdesc="A high-performance Rust TUI for YouTube playback and management (Binary Release)"
+arch=('x86_64')
 url="https://github.com/mojahid8238/Rataplay"
 license=('GPL3')
 depends=('glibc' 'gcc-libs' 'openssl' 'mpv' 'yt-dlp')
-makedepends=('cargo' 'git')
 provides=('rataplay')
-conflicts=('rataplay')
-# We remove 'vivid' from conflicts because we are renaming the binary, 
-# so you can keep the original vivid installed.
-source=("git+$url.git")
-sha256sums=('SKIP')
+options=('!strip' '!debug')
+conflicts=('rataplay-git')
 
-pkgver() {
-  cd "$_pkgname"
-  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
-}
-
-prepare() {
-  cd "$_pkgname"
-  cargo fetch --locked --target "$CARCH-unknown-linux-gnu"
-}
-
-build() {
-  cd "$_pkgname"
-  export RUSTUP_TOOLCHAIN=stable
-  export CARGO_TARGET_DIR=target
-  cargo build --frozen --release --all-features
-}
-
-check() {
-  cd "$_pkgname"
-  # Optional: run tests
-  # cargo test --frozen --all-features
-}
+# Fetching the pre-compiled binary and metadata files
+source=("rataplay::${url}/releases/download/v${pkgver}/rataplay"
+	"LICENSE::${url}/raw/v${pkgver}/LICENSE")
+#checksums for binary 
+sha256sums=('64418a1878fce938bcf00968ad3dea54453eda91dffdaa01fd0241caf3806c4a'
+            'e57f1c320b8cf8798a7d2ff83a6f9e06a33a03585f6e065fea97f1d86db84052')
 
 package() {
-  cd "$_pkgname"
-  
-  install -Dm755 "target/release/rataplay"   
-  # Install docs
-  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
-  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  # Install the binary to /usr/bin/
+  install -Dm755 "${srcdir}/rataplay" "${pkgdir}/usr/bin/rataplay"
+  install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }

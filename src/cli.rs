@@ -3,7 +3,7 @@ use clap::Parser;
 #[derive(Parser)]
 #[command(name = "Rataplay")]
 #[command(author = "Mojahid")]
-#[command(version = "0.1.0")]
+#[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(disable_version_flag = true)]
 #[command(help_template = "NAME:
    {name} - Terminal YouTube Search & Play
