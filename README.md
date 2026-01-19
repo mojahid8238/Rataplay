@@ -15,6 +15,7 @@
 - 📥 **Background Downloads**: Multi-threaded downloads with real-time speed, progress, and ETA tracking.
 - 📂 **Local Management**: Browse, play, and manage your downloaded files directly within the app.
 - 🎛️ **Full Playback Control**: Play/Pause, Seek (5s/30s), and Progress tracking via IPC sockets.
+- 🎹 **System Media Controls**: Native support for Play/Pause, Next/Prev, and Stop via system media keys (MPRIS/SMTC).
 - ⚡ **Async Core**: Powered by Tokio for a zero-latency, non-blocking UI.
 
 ## 🛠️ Prerequisites
@@ -57,7 +58,7 @@ paru -S rataplay
 | `Enter` | Open Action Menu |
 | `d` | Toggle Downloads & Local Files Panel |
 | `Space` | Select for Batch Actions (Playlists) |
-| `b` or `Backsp`| Go Back (Playlist Navigation) |
+| `b` or `Backsp`| Go Back  |
 | `q` | Quit |
 
 #### Playback Control (Active)
@@ -76,6 +77,7 @@ paru -S rataplay
 | `x` | Cancel Download / Delete Local File |
 | `c` | Cleanup Garbage (.part files) |
 | `d` | Delete Selected Downloads|
+| `b` / `Backsp` | Go Back / Close Panel |
 | `Enter` | Action Menu for Local Files |
 
 ## 🎨 Recommended Terminals
