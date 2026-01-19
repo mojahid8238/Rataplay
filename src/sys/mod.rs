@@ -4,3 +4,4 @@ pub mod process;
 pub mod image;
 pub mod download;
 pub mod local;
+pub mod media;

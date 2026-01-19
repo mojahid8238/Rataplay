@@ -4,6 +4,7 @@ use super::{
     InputMode
 };
 use crate::sys::yt;
+use crate::sys::media::MediaEvent;
 use crate::model::download::DownloadEvent;
 use super::actions;
 
@@ -174,6 +175,42 @@ pub fn on_tick(app: &mut App) {
         }
     }
 
+    // Check for media events
+    while let Ok(event) = app.media_rx.try_recv() {
+        match event {
+            MediaEvent::Play => {
+                actions::send_command(app, "{\"command\": [\"set_property\", \"pause\", false]}\n");
+                app.is_paused = false;
+                if let Some(mc) = &mut app.media_controller {
+                    let _ = mc.set_playback_status(true);
+                }
+            }
+            MediaEvent::Pause => {
+                actions::send_command(app, "{\"command\": [\"set_property\", \"pause\", true]}\n");
+                app.is_paused = true;
+                if let Some(mc) = &mut app.media_controller {
+                    let _ = mc.set_playback_status(false);
+                }
+            }
+            MediaEvent::Toggle => {
+                actions::send_command(app, "{\"command\": [\"cycle\", \"pause\"]}\n");
+                app.is_paused = !app.is_paused;
+                if let Some(mc) = &mut app.media_controller {
+                    let _ = mc.set_playback_status(!app.is_paused);
+                }
+            }
+            MediaEvent::Stop => {
+                actions::stop_playback(app);
+            }
+            MediaEvent::Next => {
+                actions::send_command(app, "{\"command\": [\"seek\", 10, \"relative\"]}\n");
+            }
+            MediaEvent::Previous => {
+                actions::send_command(app, "{\"command\": [\"seek\", -10, \"relative\"]}\n");
+            }
+        }
+    }
+
     // Check if playback process finished
     if let Some(ref mut child) = app.playback_process {
         if let Ok(Some(_)) = child.try_wait() {
@@ -189,6 +226,9 @@ pub fn on_tick(app: &mut App) {
             app.terminal_loading_error = None;
             app.terminal_ready_url = None;
             app.status_message = Some("Stopped.".to_string());
+            if let Some(mc) = &mut app.media_controller {
+                let _ = mc.set_playback_status(false);
+            }
         }
     }
 

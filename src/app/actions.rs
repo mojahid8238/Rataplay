@@ -297,6 +297,9 @@ pub fn stop_playback(app: &mut App) {
     app.terminal_loading_error = None;
     app.terminal_ready_url = None;
     app.status_message = Some("Stopped.".to_string());
+    if let Some(mc) = &mut app.media_controller {
+        let _ = mc.set_playback_status(false);
+    }
 }
 
 pub fn toggle_pause(app: &mut App) {
@@ -308,6 +311,9 @@ pub fn toggle_pause(app: &mut App) {
         } else {
             "Resumed".to_string()
         });
+        if let Some(mc) = &mut app.media_controller {
+            let _ = mc.set_playback_status(!app.is_paused);
+        }
     }
 }
 
@@ -324,7 +330,11 @@ pub fn seek(app: &mut App, seconds: i32) {
 
 pub fn send_command(app: &App, cmd: &str) {
     if let Some(tx) = &app.playback_cmd_tx {
-        let _ = tx.send(cmd.to_string());
+        let mut command = cmd.to_string();
+        if !command.ends_with('\n') {
+            command.push('\n');
+        }
+        let _ = tx.send(command);
     }
 }
 

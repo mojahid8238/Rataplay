@@ -234,6 +234,10 @@ async fn main() -> Result<()> {
                                 app.playback_process = Some(child);
                                 app.playback_title = Some(title);
                                 app.status_message = Some("Playing externally...".to_string());
+                                if let Some(mc) = &mut app.media_controller {
+                                    let _ = mc.set_metadata(app.playback_title.as_deref().unwrap_or("Unknown"), None, None);
+                                    let _ = mc.set_playback_status(true);
+                                }
                             }
                             Err(e) => {
                                 app.status_message = Some(format!("Error playing video: {}", e));
@@ -288,6 +292,10 @@ async fn main() -> Result<()> {
                                 app.playback_process = Some(child);
                                 app.playback_title = Some(title);
                                 app.status_message = Some("Playing audio...".to_string());
+                                if let Some(mc) = &mut app.media_controller {
+                                    let _ = mc.set_metadata(app.playback_title.as_deref().unwrap_or("Unknown"), None, None);
+                                    let _ = mc.set_playback_status(true);
+                                }
                             }
                             Err(e) => {
                                 app.status_message = Some(format!("Error playing audio: {}", e));
@@ -317,7 +325,84 @@ async fn main() -> Result<()> {
                 };
 
                 if let Ok(mut child) = sys::process::play_video(final_url, true, ua) {
-                    let _ = child.wait().await;
+                    // Update media controller
+                    if let Some(mc) = &mut app.media_controller {
+                        let _ = mc.set_metadata("Terminal Playback", None, None);
+                        let _ = mc.set_playback_status(true);
+                    }
+
+                    // Set up IPC for terminal playback
+                    let socket_path = format!("/tmp/rataplay-mpv-{}.sock", std::process::id());
+                    let _ = std::fs::remove_file(&socket_path);
+                    
+                    // We need a separate task to write to the socket because the main loop is blocked here
+                    // waiting for the child process.
+                    let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                    
+                    // Spawn IPC writer task
+                    let socket_path_writer = socket_path.clone();
+                    let writer_handle = tokio::spawn(async move {
+                         use tokio::io::AsyncWriteExt;
+                         // Wait for socket
+                         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                         if let Ok(mut stream) = tokio::net::UnixStream::connect(&socket_path_writer).await {
+                             while let Some(cmd) = cmd_rx.recv().await {
+                                 let _ = stream.write_all(cmd.as_bytes()).await;
+                                 let _ = stream.flush().await;
+                             }
+                         }
+                    });
+
+                    // Event loop for terminal playback
+                    loop {
+                        tokio::select! {
+                            // Check if child exited
+                            status = child.wait() => {
+                                let _ = status; 
+                                break;
+                            }
+                            // Handle media events
+                            Some(event) = app.media_rx.recv() => {
+                                use sys::media::MediaEvent;
+                                match event {
+                                    MediaEvent::Play => {
+                                        let _ = cmd_tx.send("{\"command\": [\"set_property\", \"pause\", false]}\n".to_string());
+                                        if let Some(mc) = &mut app.media_controller {
+                                            let _ = mc.set_playback_status(true);
+                                        }
+                                    }
+                                    MediaEvent::Pause => {
+                                        let _ = cmd_tx.send("{\"command\": [\"set_property\", \"pause\", true]}\n".to_string());
+                                        if let Some(mc) = &mut app.media_controller {
+                                            let _ = mc.set_playback_status(false);
+                                        }
+                                    }
+                                    MediaEvent::Toggle => {
+                                        let _ = cmd_tx.send("{\"command\": [\"cycle\", \"pause\"]}\n".to_string());
+                                        // We can't easily know exact state without reading IPC, but we can toggle blindly
+                                        // or assume sync. For now, let's just send the command.
+                                    }
+                                    MediaEvent::Next => {
+                                        let _ = cmd_tx.send("{\"command\": [\"seek\", 10, \"relative\"]}\n".to_string());
+                                    }
+                                    MediaEvent::Previous => {
+                                        let _ = cmd_tx.send("{\"command\": [\"seek\", -10, \"relative\"]}\n".to_string());
+                                    }
+                                    MediaEvent::Stop => {
+                                        let _ = child.start_kill();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Cleanup
+                    writer_handle.abort();
+                    let _ = std::fs::remove_file(&socket_path);
+
+                    if let Some(mc) = &mut app.media_controller {
+                        let _ = mc.set_playback_status(false);
+                    }
                 }
 
                 // Resume TUI

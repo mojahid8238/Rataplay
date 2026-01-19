@@ -1,6 +1,7 @@
 use crate::model::Video;
 use crate::model::local::LocalFile;
 use crate::sys::{image as sys_image, yt, local};
+use crate::sys::media::{MediaController, MediaEvent};
 use image::DynamicImage;
 use lru::LruCache;
 use std::num::NonZeroUsize;
@@ -83,6 +84,10 @@ pub struct App {
     pub playlist_stack: Vec<(Video, Vec<Video>, Option<usize>)>, // (parent, children, prev_selected)
     pub selected_playlist_indices: std::collections::HashSet<usize>,
     pub show_downloads_panel: bool,
+    
+    // Media Controls
+    pub media_controller: Option<MediaController>,
+    pub media_rx: UnboundedReceiver<MediaEvent>,
 }
 
 impl App {
@@ -321,6 +326,9 @@ impl App {
             }
         }
 
+        let (media_tx, media_rx) = mpsc::unbounded_channel();
+        let media_controller = MediaController::init(media_tx).ok();
+
         Self {
             running: true,
             input_mode: InputMode::Editing,
@@ -376,6 +384,8 @@ impl App {
             playlist_stack: Vec::new(),
             selected_playlist_indices: std::collections::HashSet::new(),
             show_downloads_panel: false,
+            media_controller,
+            media_rx,
         }
     }
 }

@@ -66,7 +66,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                     KeyCode::Char('q') => {
                         app.running = false;
                     }
-                    KeyCode::Char('b') => {
+                    KeyCode::Backspace | KeyCode::Char('b') => {
                         app.show_downloads_panel = false;
                         app.state = app.previous_app_state;
                     }

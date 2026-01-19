@@ -18,6 +18,10 @@ pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>) -> Res
         cmd.arg("--ytdl=no");
     }
 
+    // Common IPC setup
+    let socket_path = format!("/tmp/rataplay-mpv-{}.sock", std::process::id());
+    cmd.arg(format!("--input-ipc-server={}", socket_path));
+
     if in_terminal {
         cmd.arg("--vo=tct");
         cmd.arg("--really-quiet");
@@ -37,8 +41,6 @@ pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>) -> Res
             .stderr(Stdio::inherit());
     } else {
         // Detached / background
-        let socket_path = format!("/tmp/rataplay-mpv-{}.sock", std::process::id());
-        cmd.arg(format!("--input-ipc-server={}", socket_path));
         cmd.arg("--idle=yes");
         cmd.arg("--force-window=yes");
         cmd.arg("--fs");
