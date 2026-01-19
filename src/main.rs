@@ -5,7 +5,7 @@ mod sys;
 mod tui;
 
 use anyhow::Result;
-use app::{App, AppAction};
+use app::{App, AppAction, handle_key_event, handle_paste, perform_search, stop_playback, on_tick};
 use clap::Parser;
 use cli::Cli;
 use crossterm::{
@@ -153,7 +153,7 @@ async fn main() -> Result<()> {
     // Handle startup query if provided
     if let Some(query) = args.query {
         app.search_query = query;
-        app.perform_search();
+        perform_search(&mut app);
     }
 
     // Main Loop
@@ -170,8 +170,8 @@ async fn main() -> Result<()> {
 
             if crossterm::event::poll(timeout)? {
                 match event::read()? {
-                    Event::Key(key) => app.handle_key_event(key),
-                    Event::Paste(text) => app.handle_paste(text),
+                    Event::Key(key) => handle_key_event(&mut app, key),
+                    Event::Paste(text) => handle_paste(&mut app, text),
                     _ => {}
                 }
             }
@@ -179,7 +179,7 @@ async fn main() -> Result<()> {
             // Handle pending actions (Playback)
             if let Some((action, url, title)) = app.pending_action.take() {
                 // Kill previous playback if any
-                app.stop_playback();
+                stop_playback(&mut app);
 
                 // Suspend TUI only if needed (not needed for terminal anymore as it's separate)
 
@@ -328,7 +328,7 @@ async fn main() -> Result<()> {
             }
 
             if last_tick.elapsed() >= tick_rate {
-                app.on_tick();
+                on_tick(&mut app);
                 last_tick = Instant::now();
             }
 
@@ -340,7 +340,7 @@ async fn main() -> Result<()> {
     }.await;
 
     // Restore Terminal
-    app.stop_playback();
+    stop_playback(&mut app);
     cleanup_terminal(&mut terminal)?;
 
     if let Err(err) = run_result {

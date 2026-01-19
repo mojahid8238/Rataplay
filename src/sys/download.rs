@@ -50,6 +50,7 @@ pub async fn start_download(
     cmd.arg("-o").arg("%(title)s - %(id)s.%(ext)s");
     cmd.arg("--newline");
     cmd.arg("--progress");
+    cmd.arg("--write-info-json");
     cmd.arg(&video.url);
 
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());

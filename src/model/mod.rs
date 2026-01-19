@@ -32,6 +32,29 @@ pub struct Video {
     pub parent_playlist_title: Option<String>,
 }
 
+impl Default for Video {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            title: String::new(),
+            channel: String::new(),
+            url: String::new(),
+            duration_string: String::new(),
+            thumbnail_url: None,
+            view_count: None,
+            concurrent_view_count: None,
+            upload_date: None,
+            playlist_count: None,
+            live_status: None,
+            is_partial: true,
+            video_type: VideoType::Video,
+            parent_playlist_id: None,
+            parent_playlist_url: None,
+            parent_playlist_title: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum VideoType {
     #[default]
