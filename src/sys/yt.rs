@@ -27,10 +27,8 @@ pub async fn search_videos_flat(
 
     let mut is_direct_playlist_url = query.contains("list=") || query.contains("/playlist/");
 
-    // If the query is a URL and contains known playlist identifiers (PL, UU, FL, RD, OL)
-    // but wasn't caught by the explicit 'list=' or '/playlist/' check,
-    // then also consider it a direct playlist URL.
-    if is_url && !is_direct_playlist_url &&
+    // If the query is a YouTube URL and contains known playlist identifiers
+    if is_url && !is_direct_playlist_url && query.contains("youtube.com") &&
        (query.contains("PL") || query.contains("UU") ||
         query.contains("FL") || query.contains("RD") ||
         query.contains("OL")) {
@@ -54,14 +52,12 @@ pub async fn search_videos_flat(
         ]
     } else if is_url {
         // This is a direct video URL or other single item URL
+        // We don't use --flat-playlist here because we want full metadata for the single item
         vec![
             "--dump-json",
-            "--flat-playlist", // still useful for channels/users
             "--no-check-formats",
             "--ignore-errors",
             "--no-warnings",
-            "--playlist-end", // Limit to 1 item to get its metadata
-            "1", // Always 1 for direct video URL
             &search_query,
         ]
     } else {
@@ -78,6 +74,7 @@ pub async fn search_videos_flat(
             &search_query,
         ]
     };
+
 
     let mut child = Command::new("yt-dlp")
         .args(&args)
@@ -113,30 +110,28 @@ pub async fn search_videos_flat(
                 continue;
             }
 
-            if let Some(availability) = val["availability"].as_str() {
-                if availability != "public" && availability != "unlisted" {
-                    continue; // Skip non-public/unlisted videos
-                }
-            }
-
             // Also, skip if there's no usable URL
-            let mut final_url = val["url"]
+            let mut final_url = val["webpage_url"]
                 .as_str()
-                .or_else(|| val["webpage_url"].as_str())
+                .or_else(|| val["url"].as_str())
                 .unwrap_or("")
                 .to_string();
 
             if final_url.is_empty() && !id.is_empty() {
-                final_url = format!("https://www.youtube.com/watch?v={}", id);
+                if let Some(original_url) = val["original_url"].as_str() {
+                    final_url = original_url.to_string();
+                }
             }
 
             if final_url.is_empty() {
-                // If url and webpage_url are empty, it's likely not a valid video to play
                 continue;
             }
 
             let title = val["title"].as_str().unwrap_or_default().to_string();
-            let channel = val["uploader"].as_str().unwrap_or("Unknown").to_string();
+            let channel = val["uploader"].as_str()
+                .or_else(|| val["uploader_id"].as_str())
+                .or_else(|| val["webpage_url_domain"].as_str())
+                .unwrap_or("Unknown").to_string();
             
 
             let item_type_str = val["_type"].as_str().unwrap_or("video");
@@ -335,8 +330,17 @@ pub async fn resolve_video_details(
         if let Ok(val) = serde_json::from_str::<Value>(&line) {
             let id = val["id"].as_str().unwrap_or_default().to_string();
             let title = val["title"].as_str().unwrap_or_default().to_string();
-            let channel = val["uploader"].as_str().unwrap_or("Unknown").to_string();
-            let url = val["webpage_url"].as_str().unwrap_or_default().to_string();
+            let channel = val["uploader"].as_str()
+                .or_else(|| val["uploader_id"].as_str())
+                .or_else(|| val["webpage_url_domain"].as_str())
+                .unwrap_or("Unknown").to_string();
+            
+            let url = val["webpage_url"]
+                .as_str()
+                .or_else(|| val["url"].as_str())
+                .or_else(|| val["original_url"].as_str())
+                .unwrap_or_default()
+                .to_string();
             let duration = val["duration"].as_f64().unwrap_or(0.0);
             let thumbnail = val["thumbnail"].as_str().map(|s| s.to_string());
             let view_count = val["view_count"].as_u64();
@@ -417,11 +421,10 @@ pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
         .await?;
 
     if !output.status.success() {
-        // bail!("yt-dlp failed");
+        let _err = String::from_utf8_lossy(&output.stderr);
     }
 
     let stdout = String::from_utf8(output.stdout)?;
-    // output is one JSON object
     let val: Value = serde_json::from_str(&stdout).context("Failed to parse yt-dlp JSON")?;
 
     let mut formats = Vec::new();
@@ -434,36 +437,33 @@ pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
             let vcodec = f["vcodec"].as_str().unwrap_or("none");
             let acodec = f["acodec"].as_str().unwrap_or("none");
 
-            // Skip storyboards, images, and data-only formats
-            if (vcodec == "none" && acodec == "none")
-                || ext == "mhtml"
-                || format_id.contains("storyboard")
-            {
+            // Skip storyboards, images
+            if ext == "mhtml" || format_id.contains("storyboard") {
                 continue;
             }
+            
+            if vcodec == "none" && acodec == "none" && !format_id.contains("combined") {
+                 // Potentially metadata only, but let's be careful.
+                 // continue; 
+            }
 
-            let mut resolution = f["resolution"].as_str().unwrap_or("unknown").to_string();
+            let mut resolution = f["resolution"].as_str()
+                .or_else(|| f["format_note"].as_str())
+                .unwrap_or("unknown")
+                .to_string();
 
-            // If vcodec is none, it's definitely audio only
-            if vcodec == "none" {
+            if vcodec == "none" && acodec != "none" {
                 resolution = "audio only".to_string();
             }
 
             let format_note = f["format_note"].as_str().unwrap_or("").to_string();
-
-            // Skip formats that have no resolution and no note (often redundant metadata)
-            if resolution == "unknown" && format_note.is_empty() {
-                continue;
-            }
-
-            // Try multiple ways to get filesize
+            
             let mut filesize = f["filesize"]
                 .as_u64()
                 .or_else(|| f["filesize_approx"].as_u64())
                 .or_else(|| f["filesize"].as_f64().map(|v| v as u64))
                 .or_else(|| f["filesize_approx"].as_f64().map(|v| v as u64));
 
-            // If still no filesize, try to estimate from bitrate (tbr) and duration
             if filesize.is_none() {
                 if let (Some(tbr), Some(dur)) = (f["tbr"].as_f64(), duration) {
                     filesize = Some(((tbr * 1000.0 / 8.0) * dur) as u64);
@@ -479,7 +479,8 @@ pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
             });
         }
     }
-
+    
+    
     // Sort: Videos first (highest resolution), then audio only
     formats.sort_by(|a, b| {
         let a_is_audio = a.resolution == "audio only" || a.note.contains("audio only");
@@ -490,7 +491,6 @@ pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
         } else if !a_is_audio && b_is_audio {
             std::cmp::Ordering::Less
         } else if !a_is_audio && !b_is_audio {
-            // Both are videos, sort by resolution (height)
             let get_height = |res: &str| {
                 res.split('x')
                     .last()
@@ -499,7 +499,6 @@ pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
             };
             get_height(b.resolution.as_str()).cmp(&get_height(a.resolution.as_str()))
         } else {
-            // Both are audio, sort by filesize/bitrate (filesize as proxy)
             b.filesize.cmp(&a.filesize)
         }
     });
@@ -509,7 +508,6 @@ pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
 
 pub async fn get_best_stream_url(url: &str) -> Result<String> {
     // We use -g to get the URL.
-    // If it returns two lines (video and audio), we handle it.
     let output = Command::new("yt-dlp")
         .arg("-g")
         .arg("-f")
@@ -523,19 +521,8 @@ pub async fn get_best_stream_url(url: &str) -> Result<String> {
         let s = String::from_utf8(output.stdout)?;
         let lines: Vec<&str> = s.lines().collect();
         if lines.is_empty() {
-            anyhow::bail!("No stream URL found");
-        }
-
-        // If there are two lines, it's usually video then audio.
-        // mpv can play this if we join them with a space, but better yet,
-        // we can return the first one and let mpv's ytdl handle the audio IF it's a simple stream.
-        // HOWEVER, for DASH/HLS, -g usually returns a single manifest URL.
-        // If it's two separate URLs, we join them with a special format or just take best.
-        if lines.len() >= 2 {
-            // This is tricky. mpv doesn't easily take two URLs on cmdline as one 'stream'.
-            // But if we use 'best' instead of 'bestvideo+bestaudio', it will be slower but single.
-            // Let's try to get a single combined URL if possible first.
-            let fallback = Command::new("yt-dlp")
+             // Fallback to simple 'best'
+             let fallback = Command::new("yt-dlp")
                 .arg("-g")
                 .arg("-f")
                 .arg("best")
@@ -543,14 +530,45 @@ pub async fn get_best_stream_url(url: &str) -> Result<String> {
                 .arg(url)
                 .output()
                 .await?;
-            if fallback.status.success() {
-                let s = String::from_utf8(fallback.stdout)?;
-                return Ok(s.trim().to_string());
-            }
+             if fallback.status.success() {
+                 return Ok(String::from_utf8(fallback.stdout)?.trim().to_string());
+             }
+             anyhow::bail!("No stream URL found");
+        }
+
+        if lines.len() >= 2 {
+             let fallback = Command::new("yt-dlp")
+                .arg("-g")
+                .arg("-f")
+                .arg("best")
+                .arg("--no-playlist")
+                .arg(url)
+                .output()
+                .await?;
+             if fallback.status.success() {
+                 let res = String::from_utf8(fallback.stdout)?.trim().to_string();
+                 if !res.is_empty() {
+                     return Ok(res);
+                 }
+             }
         }
 
         Ok(lines[0].trim().to_string())
     } else {
+        // Final fallback to 'best'
+        let fallback = Command::new("yt-dlp")
+            .arg("-g")
+            .arg("-f")
+            .arg("best")
+            .arg("--no-playlist")
+            .arg(url)
+            .output()
+            .await?;
+        
+        if fallback.status.success() {
+            return Ok(String::from_utf8(fallback.stdout)?.trim().to_string());
+        }
+
         let err = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!(
             "yt-dlp error: {}",

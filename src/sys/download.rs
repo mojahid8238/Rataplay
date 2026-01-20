@@ -44,10 +44,15 @@ pub async fn start_download(
     }
 
     let mut cmd = Command::new("yt-dlp");
-    cmd.arg("-f")
-        .arg(format!("{}+bestaudio/best", format_id));
+    let format_arg = if format_id == "best" {
+        "bestvideo+bestaudio/best".to_string()
+    } else {
+        format!("{}+bestaudio/best", format_id)
+    };
+    
+    cmd.arg("-f").arg(format_arg);
     cmd.arg("-P").arg(&download_dir);
-    cmd.arg("-o").arg("%(title)s - %(id)s.%(ext)s");
+    cmd.arg("-o").arg("%(title).150s - %(id)s.%(ext)s");
     cmd.arg("--newline");
     cmd.arg("--progress");
     cmd.arg("--write-info-json");

@@ -21,5 +21,12 @@ lru = "0.12.3"
 libc = "0.2.155"
 souvlaki = "0.7.3"
 
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
 
 

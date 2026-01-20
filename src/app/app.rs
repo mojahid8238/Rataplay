@@ -312,14 +312,14 @@ impl App {
         
         // Scan for incomplete downloads to resume
         let incomplete = local::scan_incomplete_downloads();
-        for (id, title, url) in incomplete {
+        for (id, title, url, format_id) in incomplete {
             if !download_manager.tasks.contains_key(&id) {
                 let mut video = Video::default();
                 video.id = id.clone();
                 video.title = title.clone();
                 video.url = url;
                 
-                let mut task = crate::model::download::DownloadTask::new(video, "best".to_string());
+                let mut task = crate::model::download::DownloadTask::new(video, format_id);
                 task.status = crate::model::download::DownloadStatus::Canceled; // Set to canceled so it shows up as restorable
                 download_manager.tasks.insert(id.clone(), task);
                 download_manager.task_order.push(id);

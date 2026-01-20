@@ -31,7 +31,7 @@ Rataplay relies on the following tools:
 ```bash
 cargo install --git https://github.com/mojahid8238/Rataplay.git
 ```
-
+Note: Ensure that `~/.cargo/bin` is in your `PATH` to run the executable from any directory.
 ### From AUR (Arch Linux)
 ```bash
 paru -S rataplay
