@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::tui::components::theme::Theme;
+use crate::tui::components::logo::AnimationMode;
 
 use super::{
     AppAction, AppState, DownloadControl, DownloadManager, InputMode
@@ -52,6 +53,7 @@ pub struct App {
     pub theme: Theme,
     pub theme_index: usize,
     pub download_directory: String,
+    pub animation_mode: AnimationMode,
 
     // Results
     pub search_results: Vec<Video>,
@@ -129,11 +131,25 @@ impl App {
         self.theme = crate::tui::components::theme::AVAILABLE_THEMES[self.theme_index];
         self.status_message = Some(format!("Theme: {}", self.theme.name));
         
+        self.save_config();
+    }
+
+    pub fn toggle_animation(&mut self) {
+        let all = AnimationMode::all();
+        let current_idx = all.iter().position(|m| m == &self.animation_mode).unwrap_or(0);
+        self.animation_mode = all[(current_idx + 1) % all.len()];
+        self.status_message = Some(format!("Animation: {}", self.animation_mode.name()));
+        
+        self.save_config();
+    }
+
+    fn save_config(&self) {
         let config = crate::sys::config::Config {
             theme: self.theme.name.to_string(),
             search_limit: self.search_limit,
             playlist_limit: self.playlist_limit,
             download_directory: self.download_directory.clone(),
+            animation: self.animation_mode,
         };
         let _ = config.save();
     }
@@ -421,6 +437,7 @@ impl App {
             theme,
             theme_index,
             download_directory: config.download_directory,
+            animation_mode: config.animation,
 
             search_results: Vec::new(),
             selected_result_index: None,

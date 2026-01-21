@@ -264,6 +264,10 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                 app.change_theme();
                 return;
             }
+            if code == KeyCode::Char('a') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                app.toggle_animation();
+                return;
+            }
 
             match app.state {
                 AppState::FormatSelection => match code {

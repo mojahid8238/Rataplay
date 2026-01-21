@@ -10,7 +10,7 @@ use crate::app::{App, AppState};
 use crate::model::VideoType;
 
 use super::widgets::{centered_rect, truncate_str};
-use super::pet::Pet;
+use super::logo::Logo;
 
 pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picker: &mut Picker) {
     if app.search_query.is_empty() {
@@ -474,19 +474,10 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
     }
 }
 
-const TITLE_BANNER: &[&str] = &[
-    r" ____       _              _             ",
-    r"|  _ \ __ _| |_ __ _ _ __ | | __ _ _   _ ",
-    r"| |_) / _` | __/ _` | '_ \| |/ _` | | | |",
-    r"|  _ < (_| | || (_| | |_) | | (_| | |_| |",
-    r"|_| \_\__,_|\__\__,_| .__/|_|\__,_|\__, |",
-    r"                    |_|            |___/ ",
-];
-
 pub fn render_greeting_section(f: &mut ratatui::Frame, app: &App, area: Rect) {
     let area = centered_rect(60, 40, area);
     
-    // Main block with title
+    // Main block
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
@@ -498,30 +489,16 @@ pub fn render_greeting_section(f: &mut ratatui::Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-             Constraint::Length(8),  // Title Banner
-             Constraint::Length(8),  // Pet area
+             Constraint::Length(12), // Pet area (Logo + Bubble)
              Constraint::Min(0),     // Instructions
         ])
         .split(inner_area);
 
-    // 1. Render Title Banner
-    let banner_text: Vec<Line> = TITLE_BANNER.iter().map(|s| {
-        Line::from(Span::styled(
-            *s,
-            Style::default().fg(app.theme.highlight).add_modifier(Modifier::BOLD)
-        ))
-    }).collect();
-    
-    let banner_p = Paragraph::new(banner_text)
-        .alignment(ratatui::layout::Alignment::Center);
-    f.render_widget(banner_p, chunks[0]);
-        
-    // 2. Render Pet
-    // We want the pet centered in its chunk
-    let pet = Pet::new(app.pet_frame);
-    f.render_widget(pet, chunks[1]);
+    // 1. Render Pet (The Talking Animated Banner)
+    let pet = Logo::new(app.pet_frame, app.theme, app.animation_mode);
+    f.render_widget(pet, chunks[0]);
 
-    // 3. Render Instructions
+    // 2. Render Instructions
     let instructions = vec![
         Line::from(""),
         Line::from(vec![Span::styled(
@@ -544,13 +521,16 @@ pub fn render_greeting_section(f: &mut ratatui::Frame, app: &App, area: Rect) {
             Span::styled("Cycle Themes", Style::default().fg(Color::DarkGray)),
         ]),
         Line::from(vec![
+            Span::styled(" [ Ctrl+a ] ", Style::default().fg(app.theme.highlight).add_modifier(Modifier::BOLD)),
+            Span::styled("Toggle Animations", Style::default().fg(Color::DarkGray)),
+            Span::raw("    "),
             Span::styled(" [ q ] ", Style::default().fg(app.theme.highlight).add_modifier(Modifier::BOLD)),
             Span::styled("Quit", Style::default().fg(Color::DarkGray)),
         ]),
     ];
     let p = Paragraph::new(instructions)
         .alignment(ratatui::layout::Alignment::Center);
-    f.render_widget(p, chunks[2]);
+    f.render_widget(p, chunks[1]);
 }
 
 pub fn format_upload_date(raw: Option<&str>) -> String {
