@@ -1,6 +1,6 @@
 use ratatui::{
     prelude::{Constraint, Direction, Layout, Rect},
-    widgets::{Block, Borders, BorderType, Table, Row, Cell, TableState},
+    widgets::{Block, Borders, BorderType, Table, Row, Cell},
     style::{Modifier, Style, Color},
     text::Span,
 };
@@ -8,7 +8,6 @@ use ratatui::{
 use crate::app::{App, AppState};
 use crate::model::download::DownloadStatus;
 
-use super::theme::{THEME_ACCENT, THEME_HIGHLIGHT, THEME_FG};
 use super::widgets::{create_progress_bar_string, truncate_str};
 
 pub fn render_downloads_view(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
@@ -48,7 +47,7 @@ fn render_active_downloads(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     ])
     .style(
         Style::default()
-            .fg(THEME_ACCENT)
+            .fg(app.theme.accent)
             .add_modifier(Modifier::BOLD),
     )
     .height(1)
@@ -87,7 +86,7 @@ fn render_active_downloads(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
             };
 
             let row_style = if is_focused {
-                Style::default().bg(THEME_HIGHLIGHT).fg(THEME_FG).add_modifier(Modifier::BOLD)
+                Style::default().bg(app.theme.highlight).fg(app.theme.fg).add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
@@ -101,8 +100,9 @@ fn render_active_downloads(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
                 Cell::from(create_progress_bar_string(
                     task.progress,
                     15,
-                    THEME_ACCENT,
+                    app.theme.accent,
                     Color::DarkGray,
+                    app.theme.fg,
                 )),
                 Cell::from(task.speed.clone()),
                 Cell::from(task.eta.clone()),
@@ -132,10 +132,8 @@ fn render_active_downloads(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
             .title(" Active Tasks "),
     );
     
-    let mut state = TableState::default();
-    state.select(if app.state == AppState::Downloads { app.selected_download_index } else { None });
-
-    f.render_stateful_widget(table, area, &mut state);
+    app.downloads_active_state.select(if app.state == AppState::Downloads { app.selected_download_index } else { None });
+    f.render_stateful_widget(table, area, &mut app.downloads_active_state);
 }
 
 fn render_local_files(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
@@ -147,7 +145,7 @@ fn render_local_files(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     ])
     .style(
         Style::default()
-            .fg(THEME_ACCENT)
+            .fg(app.theme.accent)
             .add_modifier(Modifier::BOLD),
     )
     .height(1)
@@ -171,7 +169,7 @@ fn render_local_files(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
             };
 
             let row_style = if is_focused {
-                Style::default().bg(THEME_HIGHLIGHT).fg(THEME_FG).add_modifier(Modifier::BOLD)
+                Style::default().bg(app.theme.highlight).fg(app.theme.fg).add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
@@ -203,12 +201,10 @@ fn render_local_files(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     .block(
         Block::default()
             .borders(Borders::ALL)
-            .border_type(BorderType::Rounded)
-            .title(" Local Files "),
-    );
-
-    let mut state = TableState::default();
-    state.select(if app.state == AppState::Downloads { app.selected_local_file_index } else { None });
-
-    f.render_stateful_widget(table, area, &mut state);
-}
+                            .border_type(BorderType::Rounded)
+                        .title(" Local Files "),
+                );
+            
+                app.downloads_local_state.select(if app.state == AppState::Downloads { app.selected_local_file_index } else { None });
+                f.render_stateful_widget(table, area, &mut app.downloads_local_state);
+            }

@@ -30,6 +30,7 @@ pub enum AppAction {
     CancelDownload,
     ResumeDownload,
     ResumeSelectedDownloads,
+    ToggleTheme,
 }
 
 pub struct Action {

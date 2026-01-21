@@ -4,9 +4,13 @@ use crate::sys::{image as sys_image, yt, local};
 use crate::sys::media::{MediaController, MediaEvent};
 use image::DynamicImage;
 use lru::LruCache;
+use ratatui::layout::Rect;
+use ratatui::widgets::{ListState, TableState};
 use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+
+use crate::tui::components::theme::{Theme, DEFAULT_THEME};
 
 use super::{
     AppAction, AppState, DownloadControl, DownloadManager, InputMode
@@ -20,6 +24,32 @@ pub struct App {
     // Search
     pub search_query: String,
     pub cursor_position: usize,
+    // UI Layout Areas for Mouse Interaction
+    pub search_bar_area: Rect,
+    pub main_content_area: Rect,
+    pub downloads_area: Option<Rect>,
+    pub playback_bar_area: Option<Rect>,
+    pub action_menu_area: Option<Rect>,
+    pub format_selection_area: Option<Rect>,
+
+    // UI States (persisted for scroll offset tracking)
+    pub main_list_state: ListState,
+    pub downloads_active_state: TableState,
+    pub downloads_local_state: TableState,
+    pub action_menu_state: ListState,
+    pub format_selection_state: TableState,
+    
+    // Mouse Tracking
+    pub last_click_time: Option<Instant>,
+    pub last_click_pos: Option<(u16, u16)>,
+
+    // Animation State
+    pub pet_frame: usize,
+    
+    // Visuals
+    pub theme: Theme,
+    pub theme_index: usize,
+
     // Results
     pub search_results: Vec<Video>,
     pub selected_result_index: Option<usize>,
@@ -336,6 +366,27 @@ impl App {
             previous_app_state: AppState::Search,
             search_query: String::new(),
             cursor_position: 0,
+            search_bar_area: Rect::default(),
+            main_content_area: Rect::default(),
+            downloads_area: None,
+            playback_bar_area: None,
+            action_menu_area: None,
+            format_selection_area: None,
+            
+            main_list_state: ListState::default(),
+            downloads_active_state: TableState::default(),
+            downloads_local_state: TableState::default(),
+            action_menu_state: ListState::default(),
+            format_selection_state: TableState::default(),
+            
+            last_click_time: None,
+            last_click_pos: None,
+            
+            pet_frame: 0,
+            
+            theme: DEFAULT_THEME,
+            theme_index: 0,
+
             search_results: Vec::new(),
             selected_result_index: None,
             search_tx,

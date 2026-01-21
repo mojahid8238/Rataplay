@@ -7,3 +7,4 @@ pub mod main_content;
 pub mod action_menu;
 pub mod format_selection;
 pub mod downloads;
+pub mod pet;

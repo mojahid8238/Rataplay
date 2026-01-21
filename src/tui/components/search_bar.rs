@@ -5,7 +5,6 @@ use ratatui::{
 };
 
 use crate::app::{App, InputMode};
-use super::theme::{THEME_ACCENT, THEME_BORDER, THEME_FG, THEME_HIGHLIGHT};
 
 pub fn render_search_bar(f: &mut ratatui::Frame, app: &App, area: Rect) {
     let width = (area.width as usize).saturating_sub(2);
@@ -14,11 +13,11 @@ pub fn render_search_bar(f: &mut ratatui::Frame, app: &App, area: Rect) {
 
     let input = Paragraph::new(display_query.as_str())
         .style(match app.input_mode {
-            InputMode::Normal => Style::default().fg(THEME_FG),
+            InputMode::Normal => Style::default().fg(app.theme.fg),
             InputMode::Editing => Style::default()
-                .fg(THEME_ACCENT)
+                .fg(app.theme.accent)
                 .add_modifier(Modifier::BOLD),
-            InputMode::Loading => Style::default().fg(THEME_HIGHLIGHT),
+            InputMode::Loading => Style::default().fg(app.theme.highlight),
         })
         .block(
             Block::default()
@@ -26,9 +25,9 @@ pub fn render_search_bar(f: &mut ratatui::Frame, app: &App, area: Rect) {
                 .border_type(BorderType::Rounded)
                 .border_style(
                     Style::default().fg(if app.input_mode == InputMode::Editing {
-                        THEME_ACCENT
+                        app.theme.accent
                     } else {
-                        THEME_BORDER
+                        app.theme.border
                     }),
                 )
                 .title(" Search / URL "),

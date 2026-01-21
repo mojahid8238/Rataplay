@@ -1,31 +1,34 @@
 use ratatui::{
     prelude::Rect,
-    widgets::{Block, Borders, BorderType, Table, Row, Cell, TableState},
+    widgets::{Block, Borders, BorderType, Table, Row, Cell},
     style::{Modifier, Style},
     layout::Constraint,
 };
 
-use super::theme::{THEME_ACCENT, THEME_HIGHLIGHT, THEME_FG, THEME_BG};
 use super::widgets::centered_rect;
+use crate::app::App;
 
 pub fn render_format_selection(
     f: &mut ratatui::Frame,
-    selected_index: Option<usize>,
-    formats: &[crate::model::VideoFormat],
+    app: &mut App,
     area: Rect,
 ) {
     let area = centered_rect(40, 30, area);
+    app.format_selection_area = Some(area);
     f.render_widget(ratatui::widgets::Clear, area);
+
+    let formats = &app.formats;
+    let selected_index = app.selected_format_index;
 
     let block = Block::default()
         .title(" Select Quality ")
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(THEME_HIGHLIGHT))
-        .style(Style::default().bg(THEME_BG));
+        .border_style(Style::default().fg(app.theme.highlight))
+        .style(Style::default().bg(app.theme.bg));
 
     let header_style = Style::default()
-        .fg(THEME_ACCENT)
+        .fg(app.theme.accent)
         .add_modifier(Modifier::BOLD);
 
     let header = Row::new(vec![
@@ -76,7 +79,7 @@ pub fn render_format_selection(
                 Cell::from(fmt.ext.clone()),
                 Cell::from(size),
             ])
-            .style(Style::default().fg(THEME_FG))
+            .style(Style::default().fg(app.theme.fg))
             .height(1)
         })
         .collect();
@@ -93,14 +96,12 @@ pub fn render_format_selection(
     .block(block)
     .row_highlight_style(
         Style::default()
-            .bg(THEME_HIGHLIGHT)
-            .fg(THEME_FG)
+            .bg(app.theme.highlight)
+            .fg(app.theme.fg)
             .add_modifier(Modifier::BOLD),
     )
     .highlight_symbol("┃ ");
 
-    let mut state = TableState::default();
-    state.select(selected_index);
-
-    f.render_stateful_widget(table, area, &mut state);
+    app.format_selection_state.select(selected_index);
+    f.render_stateful_widget(table, area, &mut app.format_selection_state);
 }

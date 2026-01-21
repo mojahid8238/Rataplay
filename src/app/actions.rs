@@ -202,6 +202,12 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
         }
     }
 
+    actions.push(Action::new(
+        KeyCode::Char('t'),
+        "Toggle Theme (Ctrl+t)",
+        AppAction::ToggleTheme,
+    ));
+
     actions
 }
 

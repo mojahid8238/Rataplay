@@ -5,7 +5,6 @@ use ratatui::{
 };
 
 use crate::app::{App, AppState, InputMode};
-use super::theme::{THEME_ACCENT, THEME_BORDER};
 
 pub fn render_status_bar(f: &mut ratatui::Frame, app: &App, area: Rect) {
     let mode_str = match app.input_mode {
@@ -23,7 +22,7 @@ pub fn render_status_bar(f: &mut ratatui::Frame, app: &App, area: Rect) {
                     if !app.playlist_stack.is_empty() {
                         format!("q: Quit | /: Search{} | j/k: Nav | Space: Select | B: Back | Enter: Options", tab_hint)
                     } else {
-                        format!("q: Quit | d/b: Toggle | /: Search{} | j/k: Nav | Enter: Open", tab_hint)
+                        format!("q: Quit | d/b: Toggle | /: Search{} | j/k: Nav | Enter: Open | Themes: ctrl+t", tab_hint)
                     }
                 }
             }
@@ -44,8 +43,8 @@ pub fn render_status_bar(f: &mut ratatui::Frame, app: &App, area: Rect) {
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(THEME_BORDER)),
+                .border_style(Style::default().fg(app.theme.border)),
         )
-        .style(Style::default().fg(THEME_ACCENT));
+        .style(Style::default().fg(app.theme.accent));
     f.render_widget(p, area);
 }

@@ -9,6 +9,9 @@ use crate::model::download::DownloadEvent;
 use super::actions;
 
 pub fn on_tick(app: &mut App) {
+    // Update Pet Animation
+    app.pet_frame = app.pet_frame.wrapping_add(1);
+
     // check for search results
     while let Ok(result) = app.result_rx.try_recv() {
         match result {

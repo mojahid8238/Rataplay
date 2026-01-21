@@ -5,8 +5,6 @@ use ratatui::{
     style::{Color, Style},
 };
 
-use super::theme::THEME_FG;
-
 pub fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let popup_layout = Layout::default()
         .direction(Direction::Vertical)
@@ -78,7 +76,7 @@ pub fn truncate_str(s: &str, max_width: usize) -> String {
     result
 }
 
-pub fn create_progress_bar_string(progress: f64, width: u16, fg_color: Color, bg_color: Color) -> Line<'static> {
+pub fn create_progress_bar_string(progress: f64, width: u16, fg_color: Color, bg_color: Color, text_color: Color) -> Line<'static> {
     let bar_width = width.saturating_sub(6); 
     if bar_width == 0 {
         return Line::from(vec![Span::raw(format!("{:.1}%", progress))]);
@@ -89,7 +87,7 @@ pub fn create_progress_bar_string(progress: f64, width: u16, fg_color: Color, bg
 
     let filled_part = Span::styled("█".repeat(filled_chars as usize), Style::default().fg(fg_color));
     let empty_part = Span::styled(" ".repeat(empty_chars as usize), Style::default().bg(bg_color));
-    let percent_text = Span::styled(format!("{:.1}%", progress), Style::default().fg(THEME_FG));
+    let percent_text = Span::styled(format!("{:.1}%", progress), Style::default().fg(text_color));
 
     Line::from(vec![filled_part, empty_part, Span::raw(" "), percent_text])
 }

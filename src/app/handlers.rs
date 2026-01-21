@@ -2,10 +2,252 @@ use super::{
     App, AppAction, AppState, DownloadControl, InputMode
 };
 use crate::model::Video;
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind, MouseButton};
+use std::time::{Duration, Instant};
 use crate::sys::local;
 use super::actions;
 use super::updates;
+
+pub fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
+    match mouse.kind {
+        MouseEventKind::Down(MouseButton::Left) => {
+            let x = mouse.column;
+            let y = mouse.row;
+            let double_click = is_double_click(app, x, y);
+
+            // Handle Overlays first
+            if app.state == AppState::ActionMenu {
+                if let Some(area) = app.action_menu_area {
+                    if is_in_rect(x, y, area) {
+                        // Click inside action menu
+                        let relative_y = y.saturating_sub(area.y).saturating_sub(1); // -1 for border
+                        let idx = app.action_menu_state.offset() + relative_y as usize;
+                        let actions = actions::get_available_actions(app);
+                        if let Some(action) = actions.get(idx) {
+                             // Execute action
+                             let code = action.key;
+                             handle_key_event(app, KeyEvent::new(code, KeyModifiers::empty()));
+                        }
+                    } else {
+                         // Click outside -> dismiss
+                        app.state = app.previous_app_state;
+                    }
+                }
+                return;
+            }
+
+            if app.state == AppState::FormatSelection {
+                if let Some(area) = app.format_selection_area {
+                    if is_in_rect(x, y, area) {
+                        let header_height = 2; // Header + Margin
+                        let list_start_y = area.y + 1 + header_height; // Border + Header
+                        if y >= list_start_y {
+                            let relative_y = y - list_start_y;
+                            let idx = app.format_selection_state.offset() + relative_y as usize;
+                            if idx < app.formats.len() {
+                                app.selected_format_index = Some(idx);
+                                if double_click {
+                                    handle_key_event(app, KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()));
+                                }
+                            }
+                        }
+                    } else {
+                        // Click outside -> back to action menu?
+                        // Esc does this, so let's match it.
+                        app.state = AppState::ActionMenu;
+                    }
+                }
+                return;
+            }
+
+            // Playback Bar
+            if let Some(area) = app.playback_bar_area {
+                if is_in_rect(x, y, area) {
+                    actions::toggle_pause(app);
+                    return;
+                }
+            }
+
+            // Search Bar
+            if is_in_rect(x, y, app.search_bar_area) {
+                app.input_mode = InputMode::Editing;
+                return;
+            }
+
+            // Downloads Panel
+            if app.show_downloads_panel {
+                if let Some(area) = app.downloads_area {
+                    if is_in_rect(x, y, area) {
+                        if app.state != AppState::Downloads {
+                             app.previous_app_state = app.state;
+                             app.state = AppState::Downloads;
+                             actions::refresh_local_files(app);
+                        }
+                        
+                        // Hit testing for Downloads
+                        let has_active = !app.download_manager.task_order.is_empty();
+                        let active_height = if has_active {
+                             (area.height as f64 * 0.4).round() as u16
+                        } else {
+                             0
+                        };
+                        
+                        if has_active && y < area.y + active_height {
+                            // Active downloads section
+                             let list_start_y = area.y + 1 + 1; // Border + Header
+                             if y >= list_start_y {
+                                 let relative_y = y - list_start_y;
+                                 let idx = app.downloads_active_state.offset() + relative_y as usize;
+                                 if idx < app.download_manager.task_order.len() {
+                                     app.selected_download_index = Some(idx);
+                                     app.selected_local_file_index = None;
+                                     if double_click {
+                                         app.previous_app_state = app.state;
+                                         app.state = AppState::ActionMenu;
+                                     }
+                                 }
+                             }
+                        } else {
+                            // Local files section
+                            let local_start_y = if has_active {
+                                area.y + active_height + 1 + 1 // + Border + Header of local block
+                            } else {
+                                area.y + 1 + 1 // Border + Header
+                            };
+                            
+                            if y >= local_start_y {
+                                let relative_y = y - local_start_y;
+                                let idx = app.downloads_local_state.offset() + relative_y as usize;
+                                if idx < app.local_files.len() {
+                                    app.selected_local_file_index = Some(idx);
+                                    app.selected_download_index = None;
+                                    if double_click {
+                                        app.previous_app_state = app.state;
+                                        app.state = AppState::ActionMenu;
+                                    }
+                                }
+                            }
+                        }
+                        return;
+                    }
+                }
+            }
+
+            // Main Content
+            if is_in_rect(x, y, app.main_content_area) {
+                if app.state == AppState::Downloads {
+                    app.state = AppState::Results;
+                }
+                
+                // Hit testing for Main List
+                // Items are 2 lines tall.
+                let list_start_y = app.main_content_area.y + 1; // Border
+                if y >= list_start_y {
+                    let relative_y = y - list_start_y;
+                    let item_index = app.main_list_state.offset() + (relative_y / 2) as usize;
+                    
+                    if item_index < app.search_results.len() {
+                        app.selected_result_index = Some(item_index);
+                        if double_click {
+                            app.previous_app_state = app.state;
+                            app.state = AppState::ActionMenu;
+                        }
+                    } else if !app.is_url_mode && item_index == app.search_results.len() {
+                         // Clicked "Load More" (approx)
+                         actions::load_more(app);
+                    }
+                }
+                return;
+            }
+        }
+        MouseEventKind::ScrollUp => {
+             match app.state {
+                 AppState::Results => updates::move_selection(app, -1),
+                 AppState::Downloads => {
+                     if let Some(idx) = app.selected_local_file_index {
+                        if idx > 0 {
+                            app.selected_local_file_index = Some(idx - 1);
+                        } else if !app.download_manager.task_order.is_empty() {
+                            app.selected_local_file_index = None;
+                            app.selected_download_index = Some(app.download_manager.task_order.len() - 1);
+                        }
+                    } else if let Some(idx) = app.selected_download_index {
+                        if idx > 0 {
+                            app.selected_download_index = Some(idx - 1);
+                        }
+                    } else {
+                        if !app.local_files.is_empty() {
+                            app.selected_local_file_index = Some(0);
+                        } else if !app.download_manager.task_order.is_empty() {
+                            app.selected_download_index = Some(0);
+                        }
+                    }
+                 }
+                 AppState::FormatSelection => {
+                    if let Some(idx) = app.selected_format_index {
+                        if idx > 0 {
+                            app.selected_format_index = Some(idx - 1);
+                        }
+                    }
+                 }
+                 _ => {}
+             }
+        }
+        MouseEventKind::ScrollDown => {
+             match app.state {
+                 AppState::Results => updates::move_selection(app, 1),
+                 AppState::Downloads => {
+                     if let Some(idx) = app.selected_download_index {
+                        if idx < app.download_manager.task_order.len() - 1 {
+                            app.selected_download_index = Some(idx + 1);
+                        } else if !app.local_files.is_empty() {
+                            app.selected_download_index = None;
+                            app.selected_local_file_index = Some(0);
+                        }
+                    } else if let Some(idx) = app.selected_local_file_index {
+                        if idx < app.local_files.len().saturating_sub(1) {
+                            app.selected_local_file_index = Some(idx + 1);
+                        }
+                    } else {
+                        if !app.download_manager.task_order.is_empty() {
+                            app.selected_download_index = Some(0);
+                        } else if !app.local_files.is_empty() {
+                            app.selected_local_file_index = Some(0);
+                        }
+                    }
+                 }
+                 AppState::FormatSelection => {
+                    if let Some(idx) = app.selected_format_index {
+                        if idx < app.formats.len().saturating_sub(1) {
+                            app.selected_format_index = Some(idx + 1);
+                        }
+                    }
+                 }
+                 _ => {}
+             }
+        }
+        _ => {}
+    }
+}
+
+fn is_double_click(app: &mut App, x: u16, y: u16) -> bool {
+    let now = Instant::now();
+    let threshold = Duration::from_millis(500);
+    
+    if let (Some(last_time), Some(last_pos)) = (app.last_click_time, app.last_click_pos) {
+        if now.duration_since(last_time) < threshold && last_pos == (x, y) {
+            app.last_click_time = None; 
+            return true;
+        }
+    }
+    app.last_click_time = Some(now);
+    app.last_click_pos = Some((x, y));
+    false
+}
+
+fn is_in_rect(x: u16, y: u16, area: ratatui::layout::Rect) -> bool {
+    x >= area.x && x < area.x + area.width && y >= area.y && y < area.y + area.height
+}
 
 pub fn handle_key_event(app: &mut App, key: KeyEvent) {
     let code = match app.input_mode {
@@ -18,6 +260,13 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
 
     match app.input_mode {
         InputMode::Normal => {
+            if code == KeyCode::Char('t') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                app.theme_index = (app.theme_index + 1) % crate::tui::components::theme::AVAILABLE_THEMES.len();
+                app.theme = crate::tui::components::theme::AVAILABLE_THEMES[app.theme_index];
+                app.status_message = Some(format!("Theme: {}", app.theme.name));
+                return;
+            }
+
             match app.state {
                 AppState::FormatSelection => match code {
                     KeyCode::Esc | KeyCode::Char('q') => {
@@ -368,6 +617,12 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                         app.status_message = Some(format!("Error cleanup: {}", e));
                                     }
                                 }
+                                app.state = app.previous_app_state;
+                            }
+                            AppAction::ToggleTheme => {
+                                app.theme_index = (app.theme_index + 1) % crate::tui::components::theme::AVAILABLE_THEMES.len();
+                                app.theme = crate::tui::components::theme::AVAILABLE_THEMES[app.theme_index];
+                                app.status_message = Some(format!("Theme: {}", app.theme.name));
                                 app.state = app.previous_app_state;
                             }
                             _ => {

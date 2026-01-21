@@ -8,8 +8,7 @@ use ratatui::{
 };
 use ratatui_image::picker::Picker;
 
-mod components;
-use components::theme;
+pub mod components;
 use components::search_bar;
 use components::status_bar;
 use components::playback_bar;
@@ -59,10 +58,11 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
 
     // Render Background
     f.render_widget(
-        Block::default().style(Style::default().bg(theme::THEME_BG)),
+        Block::default().style(Style::default().bg(app.theme.bg)),
         f.area(),
     );
 
+    app.search_bar_area = main_layout[0];
     search_bar::render_search_bar(f, app, main_layout[0]);
 
     let main_content_area;
@@ -75,17 +75,28 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
             .split(main_layout[1]);
         main_content_area = content_chunks[0];
         downloads_area = content_chunks[1];
+        
+        app.main_content_area = main_content_area;
+        app.downloads_area = Some(downloads_area);
+
         main_content::render_main_area(f, app, main_content_area, picker);
         downloads::render_downloads_view(f, app, downloads_area);
     } else {
         main_content_area = main_layout[1];
+        
+        app.main_content_area = main_content_area;
+        app.downloads_area = None;
+
         main_content::render_main_area(f, app, main_content_area, picker);
     }
 
     let mut current_idx = 2;
     if app.playback_title.is_some() {
+        app.playback_bar_area = Some(main_layout[current_idx]);
         playback_bar::render_playback_bar(f, app, main_layout[current_idx]);
         current_idx += 1;
+    } else {
+        app.playback_bar_area = None;
     }
 
     // Render Global Download Progress
@@ -93,7 +104,7 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
         let clamped_progress = avg_progress.clamp(0.0, 100.0);
         let label = format!(" Downloading {} items: {:.1}% ", active_download_count, clamped_progress);
         let gauge = Gauge::default()
-            .gauge_style(Style::default().fg(theme::THEME_ACCENT).bg(theme::THEME_BG))
+            .gauge_style(Style::default().fg(app.theme.accent).bg(app.theme.bg))
             .label(label)
             .ratio(clamped_progress / 100.0)
             .use_unicode(true);
@@ -113,34 +124,40 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
 
     if app.terminal_loading {
         let status = if app.terminal_loading_error.is_some() { "ERROR" } else { "Loading for Terminal..." };
-        render_download_gauge(f, app.terminal_loading_progress, status, main_layout[current_idx]);
+        render_download_gauge(f, app, app.terminal_loading_progress, status, main_layout[current_idx]);
         current_idx += 1;
     }
 
     status_bar::render_status_bar(f, app, main_layout[current_idx]);
 
     if app.state == AppState::ActionMenu {
+        app.action_menu_area = Some(main_layout[1]);
         action_menu::render_action_menu(f, app, main_layout[1]);
+    } else {
+        app.action_menu_area = None;
     }
 
     if app.state == AppState::FormatSelection {
-        format_selection::render_format_selection(f, app.selected_format_index, &app.formats, f.area());
+        app.format_selection_area = Some(f.area());
+        format_selection::render_format_selection(f, app, f.area());
+    } else {
+        app.format_selection_area = None;
     }
 }
 
-fn render_download_gauge(f: &mut Frame, progress: f32, status: &str, area: Rect) {
+fn render_download_gauge(f: &mut Frame, app: &App, progress: f32, status: &str, area: Rect) {
     let gauge = Gauge::default()
         .block(
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(theme::THEME_HIGHLIGHT)),
+                .border_style(Style::default().fg(app.theme.highlight)),
         )
-        .gauge_style(Style::default().fg(theme::THEME_ACCENT).bg(theme::THEME_BG))
+        .gauge_style(Style::default().fg(app.theme.accent).bg(app.theme.bg))
         .label(
             ratatui::text::Span::styled(
                 format!(" {} {:.0}% ", status, progress * 100.0),
-                Style::default().fg(theme::THEME_FG).add_modifier(Modifier::BOLD),
+                Style::default().fg(app.theme.fg).add_modifier(Modifier::BOLD),
             )
         )
         .ratio(progress.into())

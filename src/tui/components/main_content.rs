@@ -1,6 +1,6 @@
 use ratatui::{ 
     prelude::{Constraint, Direction, Layout, Rect}, 
-    widgets::{Block, Borders, BorderType, Paragraph, List, ListItem, ListState, Wrap}, 
+    widgets::{Block, Borders, BorderType, Paragraph, List, ListItem, Wrap}, 
     style::{Modifier, Style, Color}, 
     text::{Line, Span}, 
 };
@@ -9,12 +9,12 @@ use ratatui_image::picker::Picker;
 use crate::app::{App, AppState};
 use crate::model::VideoType;
 
-use super::theme::{THEME_ACCENT, THEME_BORDER, THEME_HIGHLIGHT, THEME_FG};
 use super::widgets::{centered_rect, truncate_str};
+use super::pet::Pet;
 
 pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picker: &mut Picker) {
     if app.search_query.is_empty() {
-        render_greeting_section(f, area);
+        render_greeting_section(f, app, area);
         return;
     }
 
@@ -47,9 +47,9 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                 let avail = list_inner_width.saturating_sub(prefix_len + tag.len());
                 let display_title = truncate_str(&v.title, avail);
                 Line::from(vec![
-                    Span::styled(index_prefix, Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD)),
-                    Span::styled(tag, Style::default().fg(THEME_HIGHLIGHT).add_modifier(Modifier::BOLD)),
-                    Span::styled(display_title, Style::default().fg(THEME_HIGHLIGHT).add_modifier(Modifier::BOLD)),
+                    Span::styled(index_prefix, Style::default().fg(app.theme.fg).add_modifier(Modifier::BOLD)),
+                    Span::styled(tag, Style::default().fg(app.theme.highlight).add_modifier(Modifier::BOLD)),
+                    Span::styled(display_title, Style::default().fg(app.theme.highlight).add_modifier(Modifier::BOLD)),
                 ])
             } else if let Some(live_status) = &v.live_status {
                 let tag = if live_status == "is_live" {
@@ -65,13 +65,13 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                 let display_title = truncate_str(&v.title, avail);
 
                 Line::from(vec![
-                    Span::styled(index_prefix, Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD)),
+                    Span::styled(index_prefix, Style::default().fg(app.theme.fg).add_modifier(Modifier::BOLD)),
                     if !tag.is_empty() {
                         Span::styled(tag, Style::default().fg(tag_color).add_modifier(Modifier::BOLD))
                     } else {
                         Span::raw("")
                     },
-                    Span::styled(display_title, Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD)),
+                    Span::styled(display_title, Style::default().fg(app.theme.fg).add_modifier(Modifier::BOLD)),
                 ])
             } else if v.parent_playlist_id.is_some() {
                 let tag = "[FROM PLAYLIST] ";
@@ -79,17 +79,17 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                 let display_title = truncate_str(&v.title, avail);
 
                 Line::from(vec![
-                    Span::styled(index_prefix, Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD)),
-                    Span::styled(tag, Style::default().fg(Color::Rgb(150, 220, 255)).add_modifier(Modifier::BOLD)),
-                    Span::styled(display_title, Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD)),
+                    Span::styled(index_prefix, Style::default().fg(app.theme.fg).add_modifier(Modifier::BOLD)),
+                    Span::styled(tag, Style::default().fg(app.theme.accent).add_modifier(Modifier::BOLD)),
+                    Span::styled(display_title, Style::default().fg(app.theme.fg).add_modifier(Modifier::BOLD)),
                 ])
             } else {
                 let avail = list_inner_width.saturating_sub(prefix_len);
                 let display_title = truncate_str(&v.title, avail);
 
                 Line::from(vec![
-                    Span::styled(index_prefix, Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD)),
-                    Span::styled(display_title, Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD)),
+                    Span::styled(index_prefix, Style::default().fg(app.theme.fg).add_modifier(Modifier::BOLD)),
+                    Span::styled(display_title, Style::default().fg(app.theme.fg).add_modifier(Modifier::BOLD)),
                 ])
             };
 
@@ -98,7 +98,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
 
             let mut second_line_spans = vec![ 
                 Span::raw("      "), 
-                Span::styled(display_channel, Style::default().fg(THEME_ACCENT)),
+                Span::styled(display_channel, Style::default().fg(app.theme.accent)),
             ];
 
             if v.video_type == VideoType::Playlist {
@@ -135,7 +135,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
             }
 
             let lines = vec![title_line, Line::from(second_line_spans)];
-            ListItem::new(lines).style(Style::default().fg(THEME_FG))
+            ListItem::new(lines).style(Style::default().fg(app.theme.fg))
         })
         .collect();
 
@@ -147,7 +147,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                 Span::styled(
                     " [ Load More Results... ] ",
                     Style::default()
-                        .fg(THEME_HIGHLIGHT)
+                        .fg(app.theme.highlight)
                         .add_modifier(Modifier::BOLD),
                 ),
             ]),
@@ -160,7 +160,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
             Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(THEME_BORDER))
+                .border_style(Style::default().fg(app.theme.border))
                 .title(if let Some((parent, _, _)) = app.playlist_stack.last() { 
                     format!(" Playlist: {} ", parent.title) 
                 } else {
@@ -169,26 +169,24 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
         )
         .highlight_style(if app.state == AppState::Results {
             Style::default()
-                .bg(THEME_HIGHLIGHT)
-                .fg(THEME_FG)
+                .bg(app.theme.highlight)
+                .fg(app.theme.fg)
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default()
-                .bg(Color::Rgb(40, 40, 50))
+                .bg(app.theme.bg)
                 .fg(Color::Gray)
         })
-        .highlight_symbol(Span::styled("┃ ", Style::default().fg(if app.state == AppState::Results { THEME_HIGHLIGHT } else { Color::DarkGray })));
+        .highlight_symbol(Span::styled("┃ ", Style::default().fg(if app.state == AppState::Results { app.theme.highlight } else { Color::DarkGray })));
 
-    let mut state = ListState::default();
-    state.select(app.selected_result_index);
-
-    f.render_stateful_widget(list, chunks[0], &mut state);
+    app.main_list_state.select(app.selected_result_index);
+    f.render_stateful_widget(list, chunks[0], &mut app.main_list_state);
 
     if !app.show_downloads_panel { 
         let details_block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(THEME_BORDER))
+            .border_style(Style::default().fg(app.theme.border))
             .title(" Details ");
         let inner_area = details_block.inner(chunks[1]);
         f.render_widget(details_block, chunks[1]);
@@ -234,30 +232,30 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                     Span::styled(
                                         "Playlist: ",
                                         Style::default()
-                                            .fg(THEME_ACCENT)
+                                            .fg(app.theme.accent)
                                             .add_modifier(Modifier::BOLD),
                                     ),
-                                    Span::styled(&video.title, Style::default().fg(THEME_FG)),
+                                    Span::styled(&video.title, Style::default().fg(app.theme.fg)),
                                 ]),
                                 Line::from(vec![
                                     Span::styled(
                                         "Channel: ",
                                         Style::default()
-                                            .fg(THEME_ACCENT)
+                                            .fg(app.theme.accent)
                                             .add_modifier(Modifier::BOLD),
                                     ),
-                                    Span::styled(&video.channel, Style::default().fg(THEME_FG)),
+                                    Span::styled(&video.channel, Style::default().fg(app.theme.fg)),
                                 ]),
                                 Line::from(vec![
                                     Span::styled(
                                         "Videos: ",
                                         Style::default()
-                                            .fg(THEME_ACCENT)
+                                            .fg(app.theme.accent)
                                             .add_modifier(Modifier::BOLD),
                                     ),
                                     Span::styled(
                                         video.playlist_count.unwrap_or(0).to_string(),
-                                        Style::default().fg(THEME_FG),
+                                        Style::default().fg(app.theme.fg),
                                     ),
                                 ]),
                                 Line::from(""), 
@@ -265,7 +263,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                     " [ PLAYLIST ] ",
                                     Style::default()
                                         .fg(Color::Black)
-                                        .bg(THEME_HIGHLIGHT)
+                                        .bg(app.theme.highlight)
                                         .add_modifier(Modifier::BOLD),
                                 )])
                             ];
@@ -292,19 +290,19 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                     Span::styled(
                                         "Title: ",
                                         Style::default()
-                                            .fg(THEME_ACCENT)
+                                            .fg(app.theme.accent)
                                             .add_modifier(Modifier::BOLD),
                                     ),
-                                    Span::styled(&video.title, Style::default().fg(THEME_FG)),
+                                    Span::styled(&video.title, Style::default().fg(app.theme.fg)),
                                 ]),
                                 Line::from(vec![
                                     Span::styled(
                                         "Channel: ",
                                         Style::default()
-                                            .fg(THEME_ACCENT)
+                                            .fg(app.theme.accent)
                                             .add_modifier(Modifier::BOLD),
                                     ),
-                                    Span::styled(&video.channel, Style::default().fg(THEME_FG)),
+                                    Span::styled(&video.channel, Style::default().fg(app.theme.fg)),
                                 ]),
                             ];
 
@@ -321,7 +319,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                         Span::styled(
                                             "Watching: ",
                                             Style::default()
-                                                .fg(THEME_ACCENT)
+                                                .fg(app.theme.accent)
                                                 .add_modifier(Modifier::BOLD),
                                         ),
                                         Span::styled(viewers_fmt, Style::default().fg(Color::Red)),
@@ -334,19 +332,19 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                     Span::styled(
                                         "Duration: ",
                                         Style::default()
-                                            .fg(THEME_ACCENT)
+                                            .fg(app.theme.accent)
                                             .add_modifier(Modifier::BOLD),
                                     ),
-                                    Span::styled(&video.duration_string, Style::default().fg(THEME_FG)),
+                                    Span::styled(&video.duration_string, Style::default().fg(app.theme.fg)),
                                 ]));
                                 text_lines.push(Line::from(vec![
                                     Span::styled(
                                         "Views: ",
                                         Style::default()
-                                            .fg(THEME_ACCENT)
+                                            .fg(app.theme.accent)
                                             .add_modifier(Modifier::BOLD),
                                     ),
-                                    Span::styled(views_fmt, Style::default().fg(THEME_FG)),
+                                    Span::styled(views_fmt, Style::default().fg(app.theme.fg)),
                                 ]));
                             }
 
@@ -356,10 +354,10 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                     Span::styled(
                                         "Uploaded: ",
                                         Style::default()
-                                            .fg(THEME_ACCENT)
+                                            .fg(app.theme.accent)
                                             .add_modifier(Modifier::BOLD),
                                     ),
-                                    Span::styled(upload_date, Style::default().fg(THEME_FG)),
+                                    Span::styled(upload_date, Style::default().fg(app.theme.fg)),
                                 ]));
                                 text_lines.push(Line::from("")); 
                                 if let Some(playlist_title) = &video.parent_playlist_title {
@@ -367,10 +365,10 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                         Span::styled(
                                             "From Playlist: ",
                                             Style::default()
-                                                .fg(THEME_ACCENT)
+                                                .fg(app.theme.accent)
                                                 .add_modifier(Modifier::BOLD),
                                         ),
-                                        Span::styled(playlist_title, Style::default().fg(THEME_FG)),
+                                        Span::styled(playlist_title, Style::default().fg(app.theme.fg)),
                                     ]));
                                 }
                             }
@@ -465,7 +463,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                     }
                 } else if !app.is_url_mode {
                     let text = "\n\n  Press ENTER to load 20 more results...";
-                    let p = Paragraph::new(text).style(Style::default().fg(THEME_ACCENT));
+                    let p = Paragraph::new(text).style(Style::default().fg(app.theme.accent));
                     f.render_widget(p, inner_area);
                 }
             } else {
@@ -476,63 +474,83 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
     }
 }
 
-pub fn render_greeting_section(f: &mut ratatui::Frame, area: Rect) {
+const TITLE_BANNER: &[&str] = &[
+    r" ____       _              _             ",
+    r"|  _ \ __ _| |_ __ _ _ __ | | __ _ _   _ ",
+    r"| |_) / _` | __/ _` | '_ \| |/ _` | | | |",
+    r"|  _ < (_| | || (_| | |_) | | (_| | |_| |",
+    r"|_| \_\__,_|\__\__,_| .__/|_|\__,_|\__, |",
+    r"                    |_|            |___/ ",
+];
+
+pub fn render_greeting_section(f: &mut ratatui::Frame, app: &App, area: Rect) {
     let area = centered_rect(60, 40, area);
-    let text = vec![
-        Line::from(vec![
-            Span::styled(
-                "R",
-                Style::default()
-                    .fg(THEME_HIGHLIGHT)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                "ataplay",
-                Style::default().fg(THEME_FG).add_modifier(Modifier::BOLD),
-            ),
-        ]),
+    
+    // Main block with title
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(app.theme.border));
+    
+    let inner_area = block.inner(area);
+    f.render_widget(block, area);
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+             Constraint::Length(8),  // Title Banner
+             Constraint::Length(8),  // Pet area
+             Constraint::Min(0),     // Instructions
+        ])
+        .split(inner_area);
+
+    // 1. Render Title Banner
+    let banner_text: Vec<Line> = TITLE_BANNER.iter().map(|s| {
+        Line::from(Span::styled(
+            *s,
+            Style::default().fg(app.theme.highlight).add_modifier(Modifier::BOLD)
+        ))
+    }).collect();
+    
+    let banner_p = Paragraph::new(banner_text)
+        .alignment(ratatui::layout::Alignment::Center);
+    f.render_widget(banner_p, chunks[0]);
+        
+    // 2. Render Pet
+    // We want the pet centered in its chunk
+    let pet = Pet::new(app.pet_frame);
+    f.render_widget(pet, chunks[1]);
+
+    // 3. Render Instructions
+    let instructions = vec![
         Line::from(""),
         Line::from(vec![Span::styled(
-            "Search for videos or paste a URL.",
-            Style::default().fg(THEME_ACCENT),
+            "Search for videos or paste a URL to start.",
+            Style::default().fg(app.theme.accent),
         )]),
         Line::from(""),
         Line::from(vec![
-            Span::styled("Press ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                "/",
-                Style::default()
-                    .fg(THEME_HIGHLIGHT)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                " to focus search bar.",
-                Style::default().fg(Color::DarkGray),
-            ),
+            Span::styled(" [ / ] ", Style::default().fg(app.theme.highlight).add_modifier(Modifier::BOLD)),
+            Span::styled("Focus Search", Style::default().fg(Color::DarkGray)),
+            Span::raw("    "),
+            Span::styled(" [ Enter ] ", Style::default().fg(app.theme.highlight).add_modifier(Modifier::BOLD)),
+            Span::styled("Select / Actions", Style::default().fg(Color::DarkGray)),
         ]),
         Line::from(vec![
-            Span::styled("Press ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                "Enter",
-                Style::default()
-                    .fg(THEME_HIGHLIGHT)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                " to browse and see actions.",
-                Style::default().fg(Color::DarkGray),
-            ),
+            Span::styled(" [ d ] ", Style::default().fg(app.theme.highlight).add_modifier(Modifier::BOLD)),
+            Span::styled("Downloads", Style::default().fg(Color::DarkGray)),
+            Span::raw("       "),
+            Span::styled(" [ Ctrl+t ] ", Style::default().fg(app.theme.highlight).add_modifier(Modifier::BOLD)),
+            Span::styled("Cycle Themes", Style::default().fg(Color::DarkGray)),
+        ]),
+        Line::from(vec![
+            Span::styled(" [ q ] ", Style::default().fg(app.theme.highlight).add_modifier(Modifier::BOLD)),
+            Span::styled("Quit", Style::default().fg(Color::DarkGray)),
         ]),
     ];
-    let p = Paragraph::new(text)
-        .alignment(ratatui::layout::Alignment::Center)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(THEME_BORDER)),
-        );
-    f.render_widget(p, area);
+    let p = Paragraph::new(instructions)
+        .alignment(ratatui::layout::Alignment::Center);
+    f.render_widget(p, chunks[2]);
 }
 
 pub fn format_upload_date(raw: Option<&str>) -> String {

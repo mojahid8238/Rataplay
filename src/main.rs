@@ -5,7 +5,7 @@ mod sys;
 mod tui;
 
 use anyhow::Result;
-use app::{App, AppAction, handle_key_event, handle_paste, perform_search, stop_playback, on_tick};
+use app::{App, AppAction, handle_key_event, handle_mouse_event, handle_paste, perform_search, stop_playback, on_tick};
 use clap::Parser;
 use cli::Cli;
 use crossterm::{
@@ -172,6 +172,7 @@ async fn main() -> Result<()> {
                 match event::read()? {
                     Event::Key(key) => handle_key_event(&mut app, key),
                     Event::Paste(text) => handle_paste(&mut app, text),
+                    Event::Mouse(mouse) => handle_mouse_event(&mut app, mouse),
                     _ => {}
                 }
             }
