@@ -1,43 +1,45 @@
 use crate::model::Video;
 use anyhow::Result;
-use once_cell::sync::Lazy;
-use regex::Regex;
 use std::process::Stdio;
 use tokio::process::{Child, Command};
 
-// Regex to parse yt-dlp output
-// Example: [download]   1.5% of ~4.30MiB at  2.50MiB/s ETA 00:01
-static YTDLP_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
-        r"\[download\]\s+(?P<progress>\d+(?:\.\d+)?)%\s+of\s+~?(?P<size>[\d\.]+\w+)(?:\s+at\s+(?P<speed>[\d\.]+\w+/s))?(?:\s+ETA\s+(?P<eta>[\d:?]+))?",
-    )
-    .unwrap()
-});
-
 pub fn parse_progress(line: &str) -> Option<(f64, String, String, String)> {
-    YTDLP_REGEX.captures(line).and_then(|caps: regex::Captures| {
-        let progress = caps
-            .name("progress")
-            .and_then(|m: regex::Match| m.as_str().parse::<f64>().ok())?;
-        let size = caps
-            .name("size")
-            .map_or(String::new(), |m: regex::Match| m.as_str().to_string());
-        let speed = caps
-            .name("speed")
-            .map_or(String::new(), |m: regex::Match| m.as_str().to_string());
-        let eta = caps
-            .name("eta")
-            .map_or(String::new(), |m: regex::Match| m.as_str().to_string());
-        Some((progress, size, speed, eta))
-    })
+    if !line.starts_with("[download]") {
+        return None;
+    }
+
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    // Example: [download] 1.5% of ~4.30MiB at 2.50MiB/s ETA 00:01
+    // idx: 0      1    2  3        4  5         6   7
+    
+    if parts.len() < 4 { return None; }
+    
+    let progress_str = parts[1].trim_end_matches('%');
+    let progress = progress_str.parse::<f64>().ok()?;
+    
+    let size = parts[3].trim_start_matches('~').to_string();
+    
+    let mut speed = String::new();
+    let mut eta = String::new();
+    
+    // Search for "at" and "ETA" as they might be missing or in different positions
+    for i in 4..parts.len() {
+        if parts[i] == "at" && i + 1 < parts.len() {
+            speed = parts[i+1].to_string();
+        } else if parts[i] == "ETA" && i + 1 < parts.len() {
+            eta = parts[i+1].to_string();
+        }
+    }
+
+    Some((progress, size, speed, eta))
 }
 
 pub async fn start_download(
     video: &Video,
     format_id: &str,
+    download_dir: &str,
 ) -> Result<Child> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let download_dir = std::path::Path::new(&home).join("Videos").join("Rataplay");
+    let download_dir = std::path::PathBuf::from(download_dir);
 
     if let Err(e) = tokio::fs::create_dir_all(&download_dir).await {
         anyhow::bail!("Failed to create download dir: {}", e);

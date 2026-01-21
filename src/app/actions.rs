@@ -9,7 +9,9 @@ use crate::sys::{local, yt};
 use crossterm::event::KeyCode;
 
 pub fn refresh_local_files(app: &mut App) {
-    app.local_files = local::scan_local_files();
+    let download_path_buf = local::resolve_path(&app.download_directory);
+    let download_path = download_path_buf.as_path();
+    app.local_files = local::scan_local_files(download_path);
     if !app.local_files.is_empty() {
          if app.selected_local_file_index.is_none() {
              app.selected_local_file_index = Some(0);
@@ -247,7 +249,7 @@ pub fn perform_search(app: &mut App) {
     if is_url && is_direct_playlist_url {
         let _ = app
             .search_tx
-            .send((app.search_query.clone(), 1, 100, app.current_search_id));
+            .send((app.search_query.clone(), 1, app.playlist_limit, app.current_search_id));
     } else if is_url {
         let _ = app
             .search_tx
@@ -255,7 +257,7 @@ pub fn perform_search(app: &mut App) {
     } else {
         let _ = app
             .search_tx
-            .send((app.search_query.clone(), 1, 20, app.current_search_id));
+            .send((app.search_query.clone(), 1, app.search_limit, app.current_search_id));
     }
 }
 
@@ -265,14 +267,14 @@ pub fn load_more(app: &mut App) {
     }
 
     app.is_searching = true;
-    app.search_offset += 20;
+    app.search_offset += app.search_limit;
     app.search_progress = Some(0.0);
     app.status_message = Some("Loading more...".to_string());
 
     let _ = app.search_tx.send((
         app.search_query.clone(),
         app.search_offset,
-        app.search_offset + 19,
+        app.search_offset + (app.search_limit - 1),
         app.current_search_id,
     ));
 }

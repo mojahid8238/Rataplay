@@ -3,16 +3,37 @@ use anyhow::Result;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-pub fn get_download_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    Path::new(&home).join("Videos").join("Rataplay")
+pub fn resolve_path(path_str: &str) -> PathBuf {
+    let path = if path_str.starts_with("~/") {
+        let home = directories::UserDirs::new()
+            .map(|u| u.home_dir().to_path_buf())
+            .or_else(|| std::env::var("HOME").ok().map(PathBuf::from))
+            .or_else(|| std::env::var("USERPROFILE").ok().map(PathBuf::from))
+            .unwrap_or_else(|| PathBuf::from("."));
+        home.join(&path_str[2..])
+    } else {
+        // Expand environment variables like %VAR% or $VAR
+        let mut expanded = path_str.to_string();
+        
+        // Handle Windows style %VAR%
+        if cfg!(windows) {
+            for (key, value) in std::env::vars() {
+                let pattern = format!("%{}%", key);
+                if expanded.contains(&pattern) {
+                    expanded = expanded.replace(&pattern, &value);
+                }
+            }
+        }
+        
+        PathBuf::from(expanded)
+    };
+    path
 }
 
-pub fn scan_local_files() -> Vec<LocalFile> {
-    let dir = get_download_dir();
+pub fn scan_local_files(dir: &Path) -> Vec<LocalFile> {
     let mut files = Vec::new();
 
-    if let Ok(entries) = fs::read_dir(&dir) {
+    if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() {
@@ -66,11 +87,10 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
-pub fn scan_incomplete_downloads() -> Vec<(String, String, String, String)> {
-    let dir = get_download_dir();
+pub fn scan_incomplete_downloads(dir: &Path) -> Vec<(String, String, String, String)> {
     let mut incomplete = std::collections::HashMap::new();
     
-    if let Ok(entries) = fs::read_dir(&dir) {
+    if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
@@ -103,11 +123,10 @@ pub fn delete_file(path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn cleanup_garbage() -> Result<usize> {
-    let dir = get_download_dir();
+pub fn cleanup_garbage(dir: &Path) -> Result<usize> {
     let mut count = 0;
 
-    if let Ok(entries) = fs::read_dir(&dir) {
+    if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() {

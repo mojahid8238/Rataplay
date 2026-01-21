@@ -190,46 +190,16 @@ async fn main() -> Result<()> {
                     AppAction::WatchExternal => {
                         match sys::process::play_video(&full_url.to_string(), false, None) {
                             Ok(child) => {
-                                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                                let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                                 let (res_tx, res_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                                 app.playback_res_rx = res_rx;
 
-                                let socket_path =
-                                    format!("/tmp/rataplay-mpv-{}.sock", std::process::id());
-                                let _ = std::fs::remove_file(&socket_path);
+                                let socket_path = sys::mpv_ipc::get_ipc_path();
+                                if !cfg!(windows) {
+                                    let _ = std::fs::remove_file(&socket_path);
+                                }
 
-                                tokio::spawn(async move {
-                                    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-                                    // Wait a bit for mpv to create the socket
-                                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-                                    if let Ok(stream) =
-                                        tokio::net::UnixStream::connect(&socket_path).await
-                                    {
-                                        let (reader, mut writer) = stream.into_split();
-                                        let mut reader = BufReader::new(reader);
-
-                                        // Spawning reader task
-                                        let reader_handle = tokio::spawn(async move {
-                                            let mut line = String::new();
-                                            while let Ok(n) = reader.read_line(&mut line).await {
-                                                if n == 0 {
-                                                    break;
-                                                }
-                                                let _ = res_tx.send(line.clone());
-                                                line.clear();
-                                            }
-                                        });
-
-                                        // Writer loop
-                                        while let Some(cmd) = rx.recv().await {
-                                            let _ = writer.write_all(cmd.as_bytes()).await;
-                                            let _ = writer.flush().await;
-                                        }
-                                        let _ = reader_handle.abort();
-                                    }
-                                    let _ = tokio::fs::remove_file(&socket_path).await;
-                                });
+                                tokio::spawn(sys::mpv_ipc::spawn_ipc_handler(socket_path, rx, res_tx));
 
                                 app.playback_cmd_tx = Some(tx);
                                 app.playback_process = Some(child);
@@ -248,46 +218,16 @@ async fn main() -> Result<()> {
                     AppAction::ListenAudio => {
                         match sys::process::play_audio(&full_url.to_string()) {
                             Ok(child) => {
-                                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                                let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                                 let (res_tx, res_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                                 app.playback_res_rx = res_rx;
 
-                                let socket_path =
-                                    format!("/tmp/rataplay-mpv-{}.sock", std::process::id());
-                                let _ = std::fs::remove_file(&socket_path);
+                                let socket_path = sys::mpv_ipc::get_ipc_path();
+                                if !cfg!(windows) {
+                                    let _ = std::fs::remove_file(&socket_path);
+                                }
 
-                                tokio::spawn(async move {
-                                    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-                                    // Wait a bit for mpv to create the socket
-                                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-                                    if let Ok(stream) =
-                                        tokio::net::UnixStream::connect(&socket_path).await
-                                    {
-                                        let (reader, mut writer) = stream.into_split();
-                                        let mut reader = BufReader::new(reader);
-
-                                        // Spawning reader task
-                                        let reader_handle = tokio::spawn(async move {
-                                            let mut line = String::new();
-                                            while let Ok(n) = reader.read_line(&mut line).await {
-                                                if n == 0 {
-                                                    break;
-                                                }
-                                                let _ = res_tx.send(line.clone());
-                                                line.clear();
-                                            }
-                                        });
-
-                                        // Writer loop
-                                        while let Some(cmd) = rx.recv().await {
-                                            let _ = writer.write_all(cmd.as_bytes()).await;
-                                            let _ = writer.flush().await;
-                                        }
-                                        let _ = reader_handle.abort();
-                                    }
-                                    let _ = tokio::fs::remove_file(&socket_path).await;
-                                });
+                                tokio::spawn(sys::mpv_ipc::spawn_ipc_handler(socket_path, rx, res_tx));
 
                                 app.playback_cmd_tx = Some(tx);
                                 app.playback_process = Some(child);
@@ -333,26 +273,17 @@ async fn main() -> Result<()> {
                     }
 
                     // Set up IPC for terminal playback
-                    let socket_path = format!("/tmp/rataplay-mpv-{}.sock", std::process::id());
-                    let _ = std::fs::remove_file(&socket_path);
+                    let socket_path = sys::mpv_ipc::get_ipc_path();
+                    if !cfg!(windows) {
+                        let _ = std::fs::remove_file(&socket_path);
+                    }
                     
                     // We need a separate task to write to the socket because the main loop is blocked here
                     // waiting for the child process.
-                    let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                    let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                     
                     // Spawn IPC writer task
-                    let socket_path_writer = socket_path.clone();
-                    let writer_handle = tokio::spawn(async move {
-                         use tokio::io::AsyncWriteExt;
-                         // Wait for socket
-                         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                         if let Ok(mut stream) = tokio::net::UnixStream::connect(&socket_path_writer).await {
-                             while let Some(cmd) = cmd_rx.recv().await {
-                                 let _ = stream.write_all(cmd.as_bytes()).await;
-                                 let _ = stream.flush().await;
-                             }
-                         }
-                    });
+                    let writer_handle = tokio::spawn(sys::mpv_ipc::spawn_ipc_writer(socket_path.clone(), cmd_rx));
 
                     // Event loop for terminal playback
                     loop {
@@ -380,8 +311,6 @@ async fn main() -> Result<()> {
                                     }
                                     MediaEvent::Toggle => {
                                         let _ = cmd_tx.send("{\"command\": [\"cycle\", \"pause\"]}\n".to_string());
-                                        // We can't easily know exact state without reading IPC, but we can toggle blindly
-                                        // or assume sync. For now, let's just send the command.
                                     }
                                     MediaEvent::Next => {
                                         let _ = cmd_tx.send("{\"command\": [\"seek\", 10, \"relative\"]}\n".to_string());
@@ -399,7 +328,9 @@ async fn main() -> Result<()> {
                     
                     // Cleanup
                     writer_handle.abort();
-                    let _ = std::fs::remove_file(&socket_path);
+                    if !cfg!(windows) {
+                        let _ = std::fs::remove_file(&socket_path);
+                    }
 
                     if let Some(mc) = &mut app.media_controller {
                         let _ = mc.set_playback_status(false);

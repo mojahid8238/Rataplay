@@ -19,7 +19,12 @@ pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>) -> Res
     }
 
     // Common IPC setup
-    let socket_path = format!("/tmp/rataplay-mpv-{}.sock", std::process::id());
+    // Common IPC setup
+    let socket_path = if cfg!(windows) {
+        format!(r"\\.\pipe\rataplay-mpv-{}", std::process::id())
+    } else {
+        format!("/tmp/rataplay-mpv-{}.sock", std::process::id())
+    };
     cmd.arg(format!("--input-ipc-server={}", socket_path));
 
     if in_terminal {
@@ -66,7 +71,12 @@ pub fn play_audio(url: &str) -> Result<Child> {
     cmd.arg("--ytdl-format=bestaudio/best");
     cmd.kill_on_drop(true);
 
-    let socket_path = format!("/tmp/rataplay-mpv-{}.sock", std::process::id());
+    // Common IPC setup
+    let socket_path = if cfg!(windows) {
+        format!(r"\\.\pipe\rataplay-mpv-{}", std::process::id())
+    } else {
+        format!("/tmp/rataplay-mpv-{}.sock", std::process::id())
+    };
     cmd.arg(format!("--input-ipc-server={}", socket_path));
     cmd.arg("--idle=yes");
     cmd.arg(url);

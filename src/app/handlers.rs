@@ -261,9 +261,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
     match app.input_mode {
         InputMode::Normal => {
             if code == KeyCode::Char('t') && key.modifiers.contains(KeyModifiers::CONTROL) {
-                app.theme_index = (app.theme_index + 1) % crate::tui::components::theme::AVAILABLE_THEMES.len();
-                app.theme = crate::tui::components::theme::AVAILABLE_THEMES[app.theme_index];
-                app.status_message = Some(format!("Theme: {}", app.theme.name));
+                app.change_theme();
                 return;
             }
 
@@ -600,7 +598,9 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                  app.state = app.previous_app_state;
                             }
                             AppAction::CleanupLocalGarbage => {
-                                match local::cleanup_garbage() {
+                                let download_path_buf = local::resolve_path(&app.download_directory);
+                                let download_path = download_path_buf.as_path();
+                                match local::cleanup_garbage(download_path) {
                                     Ok(count) => {
                                         app.status_message = Some(format!("Cleaned {} garbage files.", count));
                                         
@@ -620,9 +620,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                 app.state = app.previous_app_state;
                             }
                             AppAction::ToggleTheme => {
-                                app.theme_index = (app.theme_index + 1) % crate::tui::components::theme::AVAILABLE_THEMES.len();
-                                app.theme = crate::tui::components::theme::AVAILABLE_THEMES[app.theme_index];
-                                app.status_message = Some(format!("Theme: {}", app.theme.name));
+                                app.change_theme();
                                 app.state = app.previous_app_state;
                             }
                             _ => {
@@ -670,7 +668,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                                 let _ = app.search_tx.send((
                                                     query,
                                                     1,
-                                                    100, 
+                                                    app.playlist_limit, 
                                                     app.current_search_id,
                                                 ));
                                                 app.status_message =

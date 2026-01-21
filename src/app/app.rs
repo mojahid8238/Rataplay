@@ -10,7 +10,7 @@ use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
-use crate::tui::components::theme::{Theme, DEFAULT_THEME};
+use crate::tui::components::theme::Theme;
 
 use super::{
     AppAction, AppState, DownloadControl, DownloadManager, InputMode
@@ -24,6 +24,8 @@ pub struct App {
     // Search
     pub search_query: String,
     pub cursor_position: usize,
+    pub search_limit: u32,
+    pub playlist_limit: u32,
     // UI Layout Areas for Mouse Interaction
     pub search_bar_area: Rect,
     pub main_content_area: Rect,
@@ -49,6 +51,7 @@ pub struct App {
     // Visuals
     pub theme: Theme,
     pub theme_index: usize,
+    pub download_directory: String,
 
     // Results
     pub search_results: Vec<Video>,
@@ -121,7 +124,33 @@ pub struct App {
 }
 
 impl App {
+    pub fn change_theme(&mut self) {
+        self.theme_index = (self.theme_index + 1) % crate::tui::components::theme::AVAILABLE_THEMES.len();
+        self.theme = crate::tui::components::theme::AVAILABLE_THEMES[self.theme_index];
+        self.status_message = Some(format!("Theme: {}", self.theme.name));
+        
+        let config = crate::sys::config::Config {
+            theme: self.theme.name.to_string(),
+            search_limit: self.search_limit,
+            playlist_limit: self.playlist_limit,
+            download_directory: self.download_directory.clone(),
+        };
+        let _ = config.save();
+    }
+
     pub fn new() -> Self {
+        // Load Configuration
+        let config = crate::sys::config::Config::load();
+        // Always save on startup to ensure the config file is fully populated with comments and all current settings
+        let _ = config.save();
+
+        let (theme_index, theme) = crate::tui::components::theme::AVAILABLE_THEMES
+            .iter()
+            .enumerate()
+            .find(|(_, t)| t.name == config.theme)
+            .map(|(i, t)| (i, *t))
+            .unwrap_or((0, crate::tui::components::theme::AVAILABLE_THEMES[0]));
+
         let (search_tx, mut search_rx) = mpsc::unbounded_channel::<(String, u32, u32, usize)>();
         let (result_tx, result_rx) =
             mpsc::unbounded_channel::<Result<(yt::SearchResult, usize), String>>();
@@ -192,6 +221,7 @@ impl App {
         use std::collections::HashMap;
 
         // Spawn a background task to handle download requests and control messages
+        let resolved_download_dir = local::resolve_path(&config.download_directory).to_string_lossy().to_string();
         tokio::spawn(async move {
             // Map video_id to its PID for control (pause/resume/cancel)
             let mut active_downloads_pids: HashMap<String, u32> = HashMap::new();
@@ -203,7 +233,7 @@ impl App {
                         if let Some((video, format_id)) = res {
                             let event_tx = download_event_tx.clone();
                             let video_id = video.id.clone();
-                            let mut child = match crate::sys::download::start_download(&video, &format_id).await {
+                            let mut child = match crate::sys::download::start_download(&video, &format_id, &resolved_download_dir).await {
                                 Ok(child) => child,
                                 Err(e) => {
                                     let _ = event_tx.send(crate::model::download::DownloadEvent::Error(video_id.clone(), e.to_string()));
@@ -337,11 +367,13 @@ impl App {
         });
 
         // Scan local files initially
-        let local_files = local::scan_local_files();
+        let download_path_buf = local::resolve_path(&config.download_directory);
+        let download_path = download_path_buf.as_path();
+        let local_files = local::scan_local_files(download_path);
         let mut download_manager = DownloadManager::new();
         
         // Scan for incomplete downloads to resume
-        let incomplete = local::scan_incomplete_downloads();
+        let incomplete = local::scan_incomplete_downloads(download_path);
         for (id, title, url, format_id) in incomplete {
             if !download_manager.tasks.contains_key(&id) {
                 let mut video = Video::default();
@@ -366,6 +398,8 @@ impl App {
             previous_app_state: AppState::Search,
             search_query: String::new(),
             cursor_position: 0,
+            search_limit: config.search_limit,
+            playlist_limit: config.playlist_limit,
             search_bar_area: Rect::default(),
             main_content_area: Rect::default(),
             downloads_area: None,
@@ -384,8 +418,9 @@ impl App {
             
             pet_frame: 0,
             
-            theme: DEFAULT_THEME,
-            theme_index: 0,
+            theme,
+            theme_index,
+            download_directory: config.download_directory,
 
             search_results: Vec::new(),
             selected_result_index: None,
