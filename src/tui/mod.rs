@@ -16,6 +16,7 @@ use components::main_content;
 use components::action_menu;
 use components::format_selection;
 use components::downloads;
+use components::settings;
 
 pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
     let mut constraints = vec![
@@ -142,6 +143,10 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
         format_selection::render_format_selection(f, app, f.area());
     } else {
         app.format_selection_area = None;
+    }
+
+    if app.state == AppState::Settings {
+        settings::render_settings_menu(f, app, f.area());
     }
 }
 

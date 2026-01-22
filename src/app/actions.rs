@@ -204,12 +204,6 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
         }
     }
 
-    actions.push(Action::new(
-        KeyCode::Char('t'),
-        "Toggle Theme (Ctrl+t)",
-        AppAction::ToggleTheme,
-    ));
-
     actions
 }
 
@@ -249,15 +243,15 @@ pub fn perform_search(app: &mut App) {
     if is_url && is_direct_playlist_url {
         let _ = app
             .search_tx
-            .send((app.search_query.clone(), 1, app.playlist_limit, app.current_search_id));
+            .send((app.search_query.clone(), 1, app.playlist_limit, app.current_search_id, app.show_live, app.show_playlists));
     } else if is_url {
         let _ = app
             .search_tx
-            .send((app.search_query.clone(), 1, 1, app.current_search_id));
+            .send((app.search_query.clone(), 1, 1, app.current_search_id, app.show_live, app.show_playlists));
     } else {
         let _ = app
             .search_tx
-            .send((app.search_query.clone(), 1, app.search_limit, app.current_search_id));
+            .send((app.search_query.clone(), 1, app.search_limit, app.current_search_id, app.show_live, app.show_playlists));
     }
 }
 
@@ -276,6 +270,8 @@ pub fn load_more(app: &mut App) {
         app.search_offset,
         app.search_offset + (app.search_limit - 1),
         app.current_search_id,
+        app.show_live,
+        app.show_playlists,
     ));
 }
 

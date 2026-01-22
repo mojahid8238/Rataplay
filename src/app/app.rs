@@ -25,6 +25,8 @@ pub struct App {
     // Search
     pub search_query: String,
     pub cursor_position: usize,
+    pub settings_input: String,
+    pub settings_cursor_position: usize,
     pub search_limit: u32,
     pub playlist_limit: u32,
     // UI Layout Areas for Mouse Interaction
@@ -34,6 +36,8 @@ pub struct App {
     pub playback_bar_area: Option<Rect>,
     pub action_menu_area: Option<Rect>,
     pub format_selection_area: Option<Rect>,
+    pub settings_area: Option<Rect>,
+    pub settings_editing_item: Option<crate::tui::components::settings::SettingItem>,
 
     // UI States (persisted for scroll offset tracking)
     pub main_list_state: ListState,
@@ -41,6 +45,7 @@ pub struct App {
     pub downloads_local_state: TableState,
     pub action_menu_state: ListState,
     pub format_selection_state: TableState,
+    pub settings_state: ListState,
     
     // Mouse Tracking
     pub last_click_time: Option<Instant>,
@@ -54,12 +59,14 @@ pub struct App {
     pub theme_index: usize,
     pub download_directory: String,
     pub animation_mode: AnimationMode,
+    pub show_live: bool,
+    pub show_playlists: bool,
 
     // Results
     pub search_results: Vec<Video>,
     pub selected_result_index: Option<usize>,
     // Async Communication
-    pub search_tx: UnboundedSender<(String, u32, u32, usize)>, // query, start, end, search_id
+    pub search_tx: UnboundedSender<(String, u32, u32, usize, bool, bool)>, // query, start, end, search_id, show_live, show_playlists
     pub result_rx: UnboundedReceiver<Result<(yt::SearchResult, usize), String>>,
     // Search Progress
     pub search_progress: Option<f32>,
@@ -143,13 +150,35 @@ impl App {
         self.save_config();
     }
 
-    fn save_config(&self) {
+    pub fn toggle_live(&mut self) {
+        self.show_live = !self.show_live;
+        self.status_message = Some(format!("Show Live: {}", if self.show_live { "On" } else { "Off" }));
+        self.save_config();
+        
+        if self.state == AppState::Results && !self.is_url_mode {
+            crate::app::actions::perform_search(self);
+        }
+    }
+
+    pub fn toggle_playlists(&mut self) {
+        self.show_playlists = !self.show_playlists;
+        self.status_message = Some(format!("Show Playlists: {}", if self.show_playlists { "On" } else { "Off" }));
+        self.save_config();
+
+        if self.state == AppState::Results && !self.is_url_mode {
+            crate::app::actions::perform_search(self);
+        }
+    }
+
+    pub fn save_config(&self) {
         let config = crate::sys::config::Config {
             theme: self.theme.name.to_string(),
             search_limit: self.search_limit,
             playlist_limit: self.playlist_limit,
             download_directory: self.download_directory.clone(),
             animation: self.animation_mode,
+            show_live: self.show_live,
+            show_playlists: self.show_playlists,
         };
         let _ = config.save();
     }
@@ -167,20 +196,20 @@ impl App {
             .map(|(i, t)| (i, *t))
             .unwrap_or((0, crate::tui::components::theme::AVAILABLE_THEMES[0]));
 
-        let (search_tx, mut search_rx) = mpsc::unbounded_channel::<(String, u32, u32, usize)>();
+        let (search_tx, mut search_rx) = mpsc::unbounded_channel::<(String, u32, u32, usize, bool, bool)>();
         let (result_tx, result_rx) =
             mpsc::unbounded_channel::<Result<(yt::SearchResult, usize), String>>();
 
         // Spawn a background task to handle search requests
         tokio::spawn(async move {
-            while let Some((query, start, end, id)) = search_rx.recv().await {
+            while let Some((query, start, end, id, show_live, show_playlists)) = search_rx.recv().await {
                 let tx = result_tx.clone();
                 tokio::spawn(async move {
                     let (item_tx, mut item_rx) = mpsc::unbounded_channel();
 
                     let search_handle = tokio::spawn(async move {
                         if let Err(e) =
-                            yt::search_videos_flat(&query, start, end, item_tx.clone()).await
+                            yt::search_videos_flat(&query, start, end, show_live, show_playlists, item_tx.clone()).await
                         {
                             let _ = item_tx.send(Err(e.to_string()));
                         }
@@ -414,6 +443,8 @@ impl App {
             previous_app_state: AppState::Search,
             search_query: String::new(),
             cursor_position: 0,
+            settings_input: String::new(),
+            settings_cursor_position: 0,
             search_limit: config.search_limit,
             playlist_limit: config.playlist_limit,
             search_bar_area: Rect::default(),
@@ -422,12 +453,15 @@ impl App {
             playback_bar_area: None,
             action_menu_area: None,
             format_selection_area: None,
+            settings_area: None,
+            settings_editing_item: None,
             
             main_list_state: ListState::default(),
             downloads_active_state: TableState::default(),
             downloads_local_state: TableState::default(),
             action_menu_state: ListState::default(),
             format_selection_state: TableState::default(),
+            settings_state: ListState::default(),
             
             last_click_time: None,
             last_click_pos: None,
@@ -438,6 +472,8 @@ impl App {
             theme_index,
             download_directory: config.download_directory,
             animation_mode: config.animation,
+            show_live: config.show_live,
+            show_playlists: config.show_playlists,
 
             search_results: Vec::new(),
             selected_result_index: None,

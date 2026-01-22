@@ -13,6 +13,8 @@ pub async fn search_videos_flat(
     query: &str,
     start: u32,
     end: u32,
+    show_live: bool,
+    show_playlists: bool,
     tx: tokio::sync::mpsc::UnboundedSender<Result<SearchResult, String>>,
 ) -> Result<()> {
     let is_url = query.starts_with("http://") || query.starts_with("https://");
@@ -183,8 +185,22 @@ pub async fn search_videos_flat(
 
             // Extract live_status before thumbnail extraction for easier access
             let live_status = val["live_status"].as_str().map(|s| s.to_string());
+            let is_live_bool = val["is_live"].as_bool().unwrap_or(false);
+
             if live_status.as_deref() == Some("is_upcoming") {
                 continue;
+            }
+
+            // If it's a direct URL (not a search), we bypass filters because the user
+            // specifically requested this item/playlist.
+            if !is_url {
+                if !show_live && (live_status.as_deref() == Some("is_live") || is_live_bool) {
+                    continue;
+                }
+
+                if !show_playlists && video_type == crate::model::VideoType::Playlist {
+                    continue;
+                }
             }
 
             // Extract thumbnail based on determined video_type

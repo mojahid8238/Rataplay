@@ -12,6 +12,7 @@ pub enum AnimationMode {
     Wave,
     Breathe,
     Glitch,
+    Neon,
     Static,
 }
 
@@ -21,12 +22,13 @@ impl AnimationMode {
             Self::Wave => "Wave",
             Self::Breathe => "Breathe",
             Self::Glitch => "Glitch",
+            Self::Neon => "Neon",
             Self::Static => "Static",
         }
     }
 
     pub fn all() -> &'static [Self] {
-        &[Self::Wave, Self::Breathe, Self::Glitch, Self::Static]
+        &[Self::Wave, Self::Breathe, Self::Glitch, Self::Neon, Self::Static]
     }
 }
 
@@ -56,6 +58,9 @@ const MESSAGES: &[&str] = &[
     "Double-click a video to see actions!",
     "Press Ctrl+t to change themes!",
     "Press Ctrl+a to toggle animations!",
+    "Press Ctrl+l to toggle live streams!",
+    "Press Ctrl+p to toggle playlists!",
+    "Press Ctrl+s to open settings!",
     "I can download entire playlists!",
     "Try watching videos in the terminal!",
     "You can paste URLs directly!",
@@ -102,6 +107,9 @@ impl Widget for Logo {
                         if (self.frame_index + row_idx) % 15 == 0 {
                             x_offset = (self.frame_index % 3) as i16 - 1;
                         }
+                    }
+                    AnimationMode::Neon => {
+                        color_shift = col_idx + row_idx * 2 + (self.frame_index * 3);
                     }
                     AnimationMode::Static => {}
                 }

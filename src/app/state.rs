@@ -30,7 +30,6 @@ pub enum AppAction {
     CancelDownload,
     ResumeDownload,
     ResumeSelectedDownloads,
-    ToggleTheme,
 }
 
 pub struct Action {
@@ -52,6 +51,7 @@ pub enum AppState {
     ActionMenu,
     FormatSelection,
     Downloads,
+    Settings,
 }
 
 #[derive(Debug)]

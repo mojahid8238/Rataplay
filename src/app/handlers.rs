@@ -60,6 +60,24 @@ pub fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                 return;
             }
 
+            if app.state == AppState::Settings {
+                if let Some(area) = app.settings_area {
+                    if is_in_rect(x, y, area) {
+                        let relative_y = y.saturating_sub(area.y).saturating_sub(1);
+                        let idx = app.settings_state.offset() + relative_y as usize;
+                        if idx < crate::tui::components::settings::SettingItem::all().len() {
+                            app.settings_state.select(Some(idx));
+                            if double_click {
+                                handle_key_event(app, KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()));
+                            }
+                        }
+                    } else {
+                        app.state = app.previous_app_state;
+                    }
+                }
+                return;
+            }
+
             // Playback Bar
             if let Some(area) = app.playback_bar_area {
                 if is_in_rect(x, y, area) {
@@ -264,12 +282,96 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                 app.change_theme();
                 return;
             }
+
             if code == KeyCode::Char('a') && key.modifiers.contains(KeyModifiers::CONTROL) {
                 app.toggle_animation();
                 return;
             }
 
+            if code == KeyCode::Char('l') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                app.toggle_live();
+                return;
+            }
+
+            if code == KeyCode::Char('p') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                app.toggle_playlists();
+                return;
+            }
+
+            if code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                if app.state == AppState::Settings {
+                    app.state = app.previous_app_state;
+                } else {
+                    app.previous_app_state = app.state;
+                    app.state = AppState::Settings;
+                    app.settings_state.select(Some(0));
+                }
+                return;
+            }
+
+
             match app.state {
+                AppState::Settings => match code {
+                    KeyCode::Esc | KeyCode::Char('q') => {
+                        app.state = app.previous_app_state;
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        let current = app.settings_state.selected().unwrap_or(0);
+                        let next = if current > 0 { current - 1 } else { crate::tui::components::settings::SettingItem::all().len() - 1 };
+                        app.settings_state.select(Some(next));
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        let current = app.settings_state.selected().unwrap_or(0);
+                        let next = (current + 1) % crate::tui::components::settings::SettingItem::all().len();
+                        app.settings_state.select(Some(next));
+                    }
+                    KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
+                        if let Some(idx) = app.settings_state.selected() {
+                            let items = crate::tui::components::settings::SettingItem::all();
+                            if let Some(item) = items.get(idx) {
+                                match item {
+                                    crate::tui::components::settings::SettingItem::Theme => {
+                                        app.theme_index = (app.theme_index + 1) % crate::tui::components::theme::AVAILABLE_THEMES.len();
+                                        app.theme = crate::tui::components::theme::AVAILABLE_THEMES[app.theme_index];
+                                        app.status_message = Some(format!("Theme: {}", app.theme.name));
+                                        app.save_config();
+                                    }
+                                    crate::tui::components::settings::SettingItem::Animation => {
+                                        app.toggle_animation();
+                                    }
+                                    crate::tui::components::settings::SettingItem::ShowLive => {
+                                        app.toggle_live();
+                                    }
+                                    crate::tui::components::settings::SettingItem::ShowPlaylists => {
+                                        app.toggle_playlists();
+                                    }
+                                    crate::tui::components::settings::SettingItem::SearchLimit => {
+                                        app.input_mode = InputMode::Editing;
+                                        app.settings_editing_item = Some(*item);
+                                        app.settings_input = app.search_limit.to_string();
+                                        app.settings_cursor_position = app.settings_input.len();
+                                        app.status_message = Some("Enter new Search Limit: ".to_string());
+                                    }
+                                    crate::tui::components::settings::SettingItem::PlaylistLimit => {
+                                        app.input_mode = InputMode::Editing;
+                                        app.settings_editing_item = Some(*item);
+                                        app.settings_input = app.playlist_limit.to_string();
+                                        app.settings_cursor_position = app.settings_input.len();
+                                        app.status_message = Some("Enter new Playlist Limit: ".to_string());
+                                    }
+                                    crate::tui::components::settings::SettingItem::DownloadDirectory => {
+                                        app.input_mode = InputMode::Editing;
+                                        app.settings_editing_item = Some(*item);
+                                        app.settings_input = app.download_directory.clone();
+                                        app.settings_cursor_position = app.settings_input.len();
+                                        app.status_message = Some("Enter new Download Directory: ".to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                },
                 AppState::FormatSelection => match code {
                     KeyCode::Esc | KeyCode::Char('q') => {
                         app.state = AppState::ActionMenu;
@@ -623,10 +725,6 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                 }
                                 app.state = app.previous_app_state;
                             }
-                            AppAction::ToggleTheme => {
-                                app.change_theme();
-                                app.state = app.previous_app_state;
-                            }
                             _ => {
                                  if let Some(idx) = app.selected_result_index {
                                     if let Some(video) = app.search_results.get(idx) {
@@ -674,6 +772,8 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                                     1,
                                                     app.playlist_limit, 
                                                     app.current_search_id,
+                                                    app.show_live,
+                                                    app.show_playlists,
                                                 ));
                                                 app.status_message =
                                                     Some(format!("Loading playlist: {}...", title));
@@ -837,64 +937,148 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
             let control = key.modifiers.contains(KeyModifiers::CONTROL);
             match key.code {
                 KeyCode::Enter => {
-                    actions::perform_search(app);
+                    if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+                        let val = app.settings_input.clone();
+                        match app.settings_editing_item {
+                            Some(crate::tui::components::settings::SettingItem::SearchLimit) => {
+                                if let Ok(n) = val.parse::<u32>() {
+                                    app.search_limit = n;
+                                    app.status_message = Some(format!("Search Limit set to {}", n));
+                                    app.save_config();
+                                }
+                            }
+                            Some(crate::tui::components::settings::SettingItem::PlaylistLimit) => {
+                                if let Ok(n) = val.parse::<u32>() {
+                                    app.playlist_limit = n;
+                                    app.status_message = Some(format!("Playlist Limit set to {}", n));
+                                    app.save_config();
+                                }
+                            }
+                            Some(crate::tui::components::settings::SettingItem::DownloadDirectory) => {
+                                app.download_directory = val;
+                                app.status_message = Some(format!("Download Directory set to {}", app.download_directory));
+                                app.save_config();
+                            }
+                            _ => {}
+                        }
+                        app.settings_input.clear();
+                        app.settings_cursor_position = 0;
+                        app.settings_editing_item = None;
+                        app.input_mode = InputMode::Normal;
+                    } else {
+                        actions::perform_search(app);
+                    }
                 }
                 KeyCode::Char(c) => {
                     if control {
                         match c {
                             'u' => {
-                                app.search_query.drain(..app.cursor_position);
-                                app.cursor_position = 0;
+                                if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+                                    app.settings_input.drain(..app.settings_cursor_position);
+                                    app.settings_cursor_position = 0;
+                                } else {
+                                    app.search_query.drain(..app.cursor_position);
+                                    app.cursor_position = 0;
+                                }
                             }
                             'k' => {
-                                app.search_query.truncate(app.cursor_position);
+                                if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+                                    app.settings_input.truncate(app.settings_cursor_position);
+                                } else {
+                                    app.search_query.truncate(app.cursor_position);
+                                }
                             }
                             'w' | 'h' => {
                                 delete_word_backwards(app);
                             }
                             'a' => {
-                                app.cursor_position = 0;
+                                if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+                                    app.settings_cursor_position = 0;
+                                } else {
+                                    app.cursor_position = 0;
+                                }
                             }
                             'e' => {
-                                app.cursor_position = app.search_query.len();
+                                if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+                                    app.settings_cursor_position = app.settings_input.len();
+                                } else {
+                                    app.cursor_position = app.search_query.len();
+                                }
                             }
                             _ => {} 
                         }
                     } else {
-                        app.search_query.insert(app.cursor_position, c);
-                        app.cursor_position += 1;
+                        if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+                            app.settings_input.insert(app.settings_cursor_position, c);
+                            app.settings_cursor_position += 1;
+                        } else {
+                            app.search_query.insert(app.cursor_position, c);
+                            app.cursor_position += 1;
+                        }
                     }
                 }
                 KeyCode::Backspace => {
                     if control {
                         delete_word_backwards(app);
-                    } else if app.cursor_position > 0 {
-                        app.search_query.remove(app.cursor_position - 1);
-                        app.cursor_position -= 1;
+                    } else {
+                        if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+                            if app.settings_cursor_position > 0 {
+                                app.settings_input.remove(app.settings_cursor_position - 1);
+                                app.settings_cursor_position -= 1;
+                            }
+                        } else if app.cursor_position > 0 {
+                            app.search_query.remove(app.cursor_position - 1);
+                            app.cursor_position -= 1;
+                        }
                     }
                 }
                 KeyCode::Delete => {
-                    if app.cursor_position < app.search_query.len() {
+                    if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+                        if app.settings_cursor_position < app.settings_input.len() {
+                            app.settings_input.remove(app.settings_cursor_position);
+                        }
+                    } else if app.cursor_position < app.search_query.len() {
                         app.search_query.remove(app.cursor_position);
                     }
                 }
                 KeyCode::Left => {
-                    if app.cursor_position > 0 {
+                    if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+                        if app.settings_cursor_position > 0 {
+                            app.settings_cursor_position -= 1;
+                        }
+                    } else if app.cursor_position > 0 {
                         app.cursor_position -= 1;
                     }
                 }
                 KeyCode::Right => {
-                    if app.cursor_position < app.search_query.len() {
+                    if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+                        if app.settings_cursor_position < app.settings_input.len() {
+                            app.settings_cursor_position += 1;
+                        }
+                    } else if app.cursor_position < app.search_query.len() {
                         app.cursor_position += 1;
                     }
                 }
                 KeyCode::Home => {
-                    app.cursor_position = 0;
+                    if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+                        app.settings_cursor_position = 0;
+                    } else {
+                        app.cursor_position = 0;
+                    }
                 }
                 KeyCode::End => {
-                    app.cursor_position = app.search_query.len();
+                    if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+                        app.settings_cursor_position = app.settings_input.len();
+                    } else {
+                        app.cursor_position = app.search_query.len();
+                    }
                 }
                 KeyCode::Esc | KeyCode::Tab => {
+                    if app.state == AppState::Settings {
+                        app.settings_input.clear();
+                        app.settings_cursor_position = 0;
+                        app.settings_editing_item = None;
+                    }
                     app.input_mode = InputMode::Normal;
                 }
                 _ => {} 
@@ -911,32 +1095,57 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
 }
 
 fn delete_word_backwards(app: &mut App) {
-    if app.cursor_position == 0 {
-        return;
-    }
-
-    let mut chars = app.search_query[..app.cursor_position]
-        .char_indices()
-        .rev()
-        .peekable();
-
-    while let Some(&(_, c)) = chars.peek() {
-        if c.is_whitespace() {
-            chars.next();
-        } else {
-            break;
+    if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+        if app.settings_cursor_position == 0 {
+            return;
         }
-    }
 
-    while let Some(&(_, c)) = chars.peek() {
-        if !c.is_whitespace() {
-            chars.next();
-        } else {
-            break;
+        let mut chars = app.settings_input[..app.settings_cursor_position]
+            .char_indices()
+            .rev()
+            .peekable();
+
+        while let Some((_, c)) = chars.next() {
+            if !c.is_whitespace() {
+                break;
+            }
         }
-    }
 
-    let new_pos = chars.peek().map(|(i, _)| i + 1).unwrap_or(0);
-    app.search_query.drain(new_pos..app.cursor_position);
-    app.cursor_position = new_pos;
+        let mut start_idx = 0;
+        while let Some((idx, c)) = chars.next() {
+            if c.is_whitespace() {
+                start_idx = idx + 1;
+                break;
+            }
+        }
+
+        app.settings_input.drain(start_idx..app.settings_cursor_position);
+        app.settings_cursor_position = start_idx;
+    } else {
+        if app.cursor_position == 0 {
+            return;
+        }
+
+        let mut chars = app.search_query[..app.cursor_position]
+            .char_indices()
+            .rev()
+            .peekable();
+
+        while let Some((_, c)) = chars.next() {
+            if !c.is_whitespace() {
+                break;
+            }
+        }
+
+        let mut start_idx = 0;
+        while let Some((idx, c)) = chars.next() {
+            if c.is_whitespace() {
+                start_idx = idx + 1;
+                break;
+            }
+        }
+
+        app.search_query.drain(start_idx..app.cursor_position);
+        app.cursor_position = start_idx;
+    }
 }

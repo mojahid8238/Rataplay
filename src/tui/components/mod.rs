@@ -8,3 +8,4 @@ pub mod action_menu;
 pub mod format_selection;
 pub mod downloads;
 pub mod logo;
+pub mod settings;
