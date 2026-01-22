@@ -25,6 +25,11 @@ DESCRIPTION:
      • Press s to search
      • Press q to quit
      • Press Esc to go back or exit
+     • Press ctrl+s to open the Settings menu
+     • Press ctrl+t to Change Theme
+     • Press ctrl+a to Change the Animations
+
+
 
 AUTHOR:
    {author}

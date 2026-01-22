@@ -17,7 +17,7 @@
 - 🎛️ **Full Playback Control**: Play/Pause, Seek (5s/30s), and Progress tracking via IPC sockets.
 - 🎹 **System Media Controls**: Native support for Play/Pause, Next/Prev, and Stop via system media keys (MPRIS/SMTC).
 - ⚡ **Async Core**: Powered by Tokio for a zero-latency, non-blocking UI.
-
+- 🎨 Toggle Themes and Animations easily with commands or from settings menu
 ## 🛠️ Prerequisites
 
 Rataplay relies on the following tools:
@@ -48,6 +48,10 @@ paru -S rataplay
 - `-v, --version`: Print version information.
 - `-h, --help`: Show the custom help screen.
 
+### Config File
+- You can change the settings or your preferences from `~/.config/rataplay/config.toml`
+
+
 ### Keybindings
 
 #### General & Results
@@ -60,6 +64,9 @@ paru -S rataplay
 | `Space` | Select for Batch Actions (Playlists) |
 | `b` or `Backsp`| Go Back  |
 | `q` | Quit |
+|`ctrl+s`| open settings|
+|`ctrl+t`| Change Themes|
+|`ctrl+a`| Change Greeting screen Animation|
 
 #### Playback Control (Active)
 | Key | Action |

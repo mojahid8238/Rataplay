@@ -1,6 +1,6 @@
 # Maintainer: Mojahid <mojahid8238@gmail.com>
 pkgname=rataplay
-pkgver=1.1.1
+pkgver=1.2
 pkgrel=1
 pkgdesc="A high-performance Rust TUI for YouTube playback and management (Binary Release)"
 arch=('x86_64')
