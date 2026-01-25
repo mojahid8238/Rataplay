@@ -12,6 +12,11 @@ pub fn on_tick(app: &mut App) {
     // Update Pet Animation
     app.pet_frame = app.pet_frame.wrapping_add(1);
 
+    // check for images - DO THIS FIRST
+    while let Ok((id, img)) = app.image_rx.try_recv() {
+        app.image_cache.insert(id, img);
+    }
+
     // check for search results
     while let Ok(result) = app.result_rx.try_recv() {
         match result {
@@ -23,9 +28,13 @@ pub fn on_tick(app: &mut App) {
                     yt::SearchResult::Video(video) => {
                         // Trigger image download if thumbnail exists, even if partial
                         if let Some(url) = &video.thumbnail_url {
-                            if !app.image_cache.contains(&video.id) {
+                            if !app.image_cache.contains_key(&video.id) {
                                 let _ = app.image_tx.send((video.id.clone(), url.clone()));
                             }
+                        }
+
+                        if video.is_partial && video.video_type == crate::model::VideoType::Video {
+                            app.pending_resolution_ids.push(video.url.clone());
                         }
 
                         app.search_results.push(video);
@@ -66,13 +75,22 @@ pub fn on_tick(app: &mut App) {
         }
     }
 
+    // Flush pending resolutions periodically (e.g. if we have >= 5 items)
+    if app.pending_resolution_ids.len() >= 5 {
+        let items: Vec<String> = app.pending_resolution_ids.drain(..).collect();
+        let _ = app.details_tx.send(items);
+    }
+
     // Resolve details for the currently selected item if it's partial
-    if let Some(idx) = app.selected_result_index {
-        if let Some(video) = app.search_results.get(idx) {
-            if video.is_partial && video.video_type == crate::model::VideoType::Video {
-                if !app.pending_resolution_ids.contains(&video.url) {
-                    app.pending_resolution_ids.push(video.url.clone());
-                    let _ = app.details_tx.send(vec![video.url.clone()]);
+    // We prioritize search results and thumbnails over these details
+    if !app.is_searching {
+        if let Some(idx) = app.selected_result_index {
+            if let Some(video) = app.search_results.get(idx) {
+                if video.is_partial && video.video_type == crate::model::VideoType::Video {
+                    if !app.pending_resolution_ids.contains(&video.url) {
+                        app.pending_resolution_ids.push(video.url.clone());
+                        let _ = app.details_tx.send(vec![video.url.clone()]);
+                    }
                 }
             }
         }
@@ -97,11 +115,6 @@ pub fn on_tick(app: &mut App) {
                 app.status_message = Some(format!("Details error: {}", e));
             }
         }
-    }
-
-    // check for images 
-    while let Ok((id, img)) = app.image_rx.try_recv() {
-        app.image_cache.put(id, img);
     }
 
     // Check for formats
@@ -323,7 +336,7 @@ pub fn move_selection(app: &mut App, delta: i32) {
 pub fn request_image_for_selection(app: &mut App) {
     if let Some(idx) = app.selected_result_index {
         if let Some(video) = app.search_results.get(idx) {
-            if !app.image_cache.contains(&video.id) {
+            if !app.image_cache.contains_key(&video.id) {
                 if let Some(url) = &video.thumbnail_url {
                     let _ = app.image_tx.send((video.id.clone(), url.clone()));
                 }

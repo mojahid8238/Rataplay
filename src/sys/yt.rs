@@ -23,17 +23,22 @@ pub async fn search_videos_flat(
     let search_query = if is_url {
         query.to_string()
     } else {
-        //gives playlists metadata 
+        //gives playlists metadata
         format!("https://www.youtube.com/results?search_query={}", query)
     };
 
     let mut is_direct_playlist_url = query.contains("list=") || query.contains("/playlist/");
 
     // If the query is a YouTube URL and contains known playlist identifiers
-    if is_url && !is_direct_playlist_url && query.contains("youtube.com") &&
-       (query.contains("PL") || query.contains("UU") ||
-        query.contains("FL") || query.contains("RD") ||
-        query.contains("OL")) {
+    if is_url
+        && !is_direct_playlist_url
+        && query.contains("youtube.com")
+        && (query.contains("PL")
+            || query.contains("UU")
+            || query.contains("FL")
+            || query.contains("RD")
+            || query.contains("OL"))
+    {
         is_direct_playlist_url = true;
     }
 
@@ -77,7 +82,6 @@ pub async fn search_videos_flat(
         ]
     };
 
-
     let mut child = Command::new("yt-dlp")
         .args(&args)
         .stdout(Stdio::piped())
@@ -108,7 +112,11 @@ pub async fn search_videos_flat(
             let id = val["id"].as_str().unwrap_or_default().to_string();
 
             // Skip if it's a known placeholder for inaccessible videos
-            if title == "[Private video]" || title == "[Deleted video]" || title.is_empty() || id.is_empty() {
+            if title == "[Private video]"
+                || title == "[Deleted video]"
+                || title.is_empty()
+                || id.is_empty()
+            {
                 continue;
             }
 
@@ -130,14 +138,15 @@ pub async fn search_videos_flat(
             }
 
             let title = val["title"].as_str().unwrap_or_default().to_string();
-            let channel = val["uploader"].as_str()
+            let channel = val["uploader"]
+                .as_str()
                 .or_else(|| val["uploader_id"].as_str())
                 .or_else(|| val["webpage_url_domain"].as_str())
-                .unwrap_or("Unknown").to_string();
-            
+                .unwrap_or("Unknown")
+                .to_string();
 
             let item_type_str = val["_type"].as_str().unwrap_or("video");
-            
+
             // For entries in a playlist, final_url might contain 'list=' but we want to check if it's primarily a video
             // Check if this is a real YouTube playlist ID (not just a search query)
             let playlist_id_str = val["playlist_id"].as_str().unwrap_or("");
@@ -148,40 +157,56 @@ pub async fn search_videos_flat(
                 || playlist_id_str.starts_with("OL");
 
             // Determine video_type before thumbnail extraction
-            let (video_type, playlist_count, duration_string, view_count, concurrent_view_count) = if item_type_str == "playlist" || item_type_str == "multi_video" {
-                let count = val["playlist_count"]
-                    .as_u64()
-                    .or_else(|| val["n_entries"].as_u64());
-                let duration_str = format!("{} videos", count.unwrap_or(0));
-                (crate::model::VideoType::Playlist, count, duration_str, None, None)
-            } else if item_type_str == "channel" {
-                (
-                    crate::model::VideoType::Channel,
-                    None,
-                    "N/A".to_string(),
-                    None,
-                    None,
-                )
-            } else if (item_type_str == "url" || item_type_str == "url_transparent") && val["ie_key"].as_str() == Some("YoutubeTab") && (final_url.contains("list=") || final_url.contains("/playlist/")) {
-                // This handles playlist references in search results
-                 let count = val["playlist_count"]
-                    .as_u64()
-                    .or_else(|| val["n_entries"].as_u64());
-                let duration_str = format!("{} videos", count.unwrap_or(0));
-                (crate::model::VideoType::Playlist, count, duration_str, None, None)
-            } else {
-                // Default to Video
-                let duration = val["duration"].as_f64().unwrap_or(0.0);
-                let view_count = val["view_count"].as_u64();
-                let concurrent_view_count = val["concurrent_view_count"].as_u64();
-                (
-                    crate::model::VideoType::Video,
-                    None,
-                    format_duration(duration),
-                    view_count,
-                    concurrent_view_count,
-                )
-            };
+            let (video_type, playlist_count, duration_string, view_count, concurrent_view_count) =
+                if item_type_str == "playlist" || item_type_str == "multi_video" {
+                    let count = val["playlist_count"]
+                        .as_u64()
+                        .or_else(|| val["n_entries"].as_u64());
+                    let duration_str = format!("{} videos", count.unwrap_or(0));
+                    (
+                        crate::model::VideoType::Playlist,
+                        count,
+                        duration_str,
+                        None,
+                        None,
+                    )
+                } else if item_type_str == "channel" {
+                    (
+                        crate::model::VideoType::Channel,
+                        None,
+                        "N/A".to_string(),
+                        None,
+                        None,
+                    )
+                } else if (item_type_str == "url" || item_type_str == "url_transparent")
+                    && val["ie_key"].as_str() == Some("YoutubeTab")
+                    && (final_url.contains("list=") || final_url.contains("/playlist/"))
+                {
+                    // This handles playlist references in search results
+                    let count = val["playlist_count"]
+                        .as_u64()
+                        .or_else(|| val["n_entries"].as_u64());
+                    let duration_str = format!("{} videos", count.unwrap_or(0));
+                    (
+                        crate::model::VideoType::Playlist,
+                        count,
+                        duration_str,
+                        None,
+                        None,
+                    )
+                } else {
+                    // Default to Video
+                    let duration = val["duration"].as_f64().unwrap_or(0.0);
+                    let view_count = val["view_count"].as_u64();
+                    let concurrent_view_count = val["concurrent_view_count"].as_u64();
+                    (
+                        crate::model::VideoType::Video,
+                        None,
+                        format_duration(duration),
+                        view_count,
+                        concurrent_view_count,
+                    )
+                };
 
             // Extract live_status before thumbnail extraction for easier access
             let live_status = val["live_status"].as_str().map(|s| s.to_string());
@@ -208,31 +233,33 @@ pub async fn search_videos_flat(
                 // For actual playlist entries, try playlist_thumbnails first
                 val["playlist_thumbnails"]
                     .as_array()
-                    .and_then(|arr| arr.iter().max_by_key(|t| t["width"].as_u64().unwrap_or(0))) // Get largest thumbnail by width
+                    .and_then(|arr| arr.last())
                     .and_then(|t| t["url"].as_str())
                     .map(|s| s.to_string())
                     .or_else(|| {
-                        // Fallback: If no playlist_thumbnails or not good, try standard thumbnails
                         val["thumbnails"]
                             .as_array()
-                            .and_then(|arr| arr.iter().max_by_key(|t| t["width"].as_u64().unwrap_or(0))) // Get largest thumbnail by width
+                            .and_then(|arr| arr.last())
                             .and_then(|t| t["url"].as_str())
                             .map(|s| s.to_string())
                     })
-                    .or_else(|| {
-                        // Final fallback to generic 'thumbnail' string field
-                        val["thumbnail"].as_str().map(|s| s.to_string())
-                    })
+                    .or_else(|| val["thumbnail"].as_str().map(|s| s.to_string()))
             } else {
-                // For videos (even from playlists), use standard thumbnails array
+                // For videos, try thumbnails array first, then fallback to single thumbnail field
                 val["thumbnails"]
                     .as_array()
-                    .and_then(|arr| arr.iter().max_by_key(|t| t["width"].as_u64().unwrap_or(0))) // Get largest thumbnail by width
+                    .and_then(|arr| arr.last())
                     .and_then(|t| t["url"].as_str())
                     .map(|s| s.to_string())
+                    .or_else(|| val["thumbnail"].as_str().map(|s| s.to_string()))
+                    .or_else(|| val["url"].as_str().map(|s| s.to_string())) // Last ditch effort of existing logic
                     .or_else(|| {
-                        // Final fallback to generic 'thumbnail' string field
-                        val["thumbnail"].as_str().map(|s| s.to_string())
+                        // New Fallback: Construct URL from ID
+                        if !id.is_empty() {
+                            Some(format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", id))
+                        } else {
+                            None
+                        }
                     })
             };
             let upload_date = val["upload_date"].as_str().map(|s| s.to_string());
@@ -240,7 +267,8 @@ pub async fn search_videos_flat(
             if video_type == crate::model::VideoType::Playlist {
                 // Prioritize canonical playlist URL using playlist_id if available
                 if !playlist_id_str.is_empty() {
-                    final_url = format!("https://www.youtube.com/playlist?list={}", playlist_id_str);
+                    final_url =
+                        format!("https://www.youtube.com/playlist?list={}", playlist_id_str);
                 } else if let Some(p_url) = val["playlist_webpage_url"].as_str() {
                     final_url = p_url.to_string();
                 }
@@ -296,7 +324,7 @@ pub async fn search_videos_flat(
         let _ = tx.send(Err(format!("yt-dlp error: {}", err_msg)));
         anyhow::bail!("yt-dlp exited with error: {}", err_msg);
     }
-    
+
     let _ = tx.send(Ok(SearchResult::Progress(1.0)));
     Ok(())
 }
@@ -346,11 +374,13 @@ pub async fn resolve_video_details(
         if let Ok(val) = serde_json::from_str::<Value>(&line) {
             let id = val["id"].as_str().unwrap_or_default().to_string();
             let title = val["title"].as_str().unwrap_or_default().to_string();
-            let channel = val["uploader"].as_str()
+            let channel = val["uploader"]
+                .as_str()
                 .or_else(|| val["uploader_id"].as_str())
                 .or_else(|| val["webpage_url_domain"].as_str())
-                .unwrap_or("Unknown").to_string();
-            
+                .unwrap_or("Unknown")
+                .to_string();
+
             let url = val["webpage_url"]
                 .as_str()
                 .or_else(|| val["url"].as_str())
@@ -457,13 +487,14 @@ pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
             if ext == "mhtml" || format_id.contains("storyboard") {
                 continue;
             }
-            
+
             if vcodec == "none" && acodec == "none" && !format_id.contains("combined") {
-                 // Potentially metadata only, but let's be careful.
-                 // continue; 
+                // Potentially metadata only, but let's be careful.
+                // continue;
             }
 
-            let mut resolution = f["resolution"].as_str()
+            let mut resolution = f["resolution"]
+                .as_str()
                 .or_else(|| f["format_note"].as_str())
                 .unwrap_or("unknown")
                 .to_string();
@@ -473,7 +504,7 @@ pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
             }
 
             let format_note = f["format_note"].as_str().unwrap_or("").to_string();
-            
+
             let mut filesize = f["filesize"]
                 .as_u64()
                 .or_else(|| f["filesize_approx"].as_u64())
@@ -495,8 +526,7 @@ pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
             });
         }
     }
-    
-    
+
     // Sort: Videos first (highest resolution), then audio only
     formats.sort_by(|a, b| {
         let a_is_audio = a.resolution == "audio only" || a.note.contains("audio only");
@@ -537,8 +567,8 @@ pub async fn get_best_stream_url(url: &str) -> Result<String> {
         let s = String::from_utf8(output.stdout)?;
         let lines: Vec<&str> = s.lines().collect();
         if lines.is_empty() {
-             // Fallback to simple 'best'
-             let fallback = Command::new("yt-dlp")
+            // Fallback to simple 'best'
+            let fallback = Command::new("yt-dlp")
                 .arg("-g")
                 .arg("-f")
                 .arg("best")
@@ -546,14 +576,14 @@ pub async fn get_best_stream_url(url: &str) -> Result<String> {
                 .arg(url)
                 .output()
                 .await?;
-             if fallback.status.success() {
-                 return Ok(String::from_utf8(fallback.stdout)?.trim().to_string());
-             }
-             anyhow::bail!("No stream URL found");
+            if fallback.status.success() {
+                return Ok(String::from_utf8(fallback.stdout)?.trim().to_string());
+            }
+            anyhow::bail!("No stream URL found");
         }
 
         if lines.len() >= 2 {
-             let fallback = Command::new("yt-dlp")
+            let fallback = Command::new("yt-dlp")
                 .arg("-g")
                 .arg("-f")
                 .arg("best")
@@ -561,12 +591,12 @@ pub async fn get_best_stream_url(url: &str) -> Result<String> {
                 .arg(url)
                 .output()
                 .await?;
-             if fallback.status.success() {
-                 let res = String::from_utf8(fallback.stdout)?.trim().to_string();
-                 if !res.is_empty() {
-                     return Ok(res);
-                 }
-             }
+            if fallback.status.success() {
+                let res = String::from_utf8(fallback.stdout)?.trim().to_string();
+                if !res.is_empty() {
+                    return Ok(res);
+                }
+            }
         }
 
         Ok(lines[0].trim().to_string())
@@ -580,7 +610,7 @@ pub async fn get_best_stream_url(url: &str) -> Result<String> {
             .arg(url)
             .output()
             .await?;
-        
+
         if fallback.status.success() {
             return Ok(String::from_utf8(fallback.stdout)?.trim().to_string());
         }

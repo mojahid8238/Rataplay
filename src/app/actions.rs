@@ -214,6 +214,7 @@ pub fn perform_search(app: &mut App) {
 
     app.input_mode = InputMode::Normal;
     app.search_results.clear();
+    app.pending_resolution_ids.clear();
     app.selected_result_index = None;
     app.playlist_stack.clear();
     app.selected_playlist_indices.clear();
