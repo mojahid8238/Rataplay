@@ -17,6 +17,7 @@
 - 🎛️ **Full Playback Control**: Play/Pause, Seek (5s/30s), and Progress tracking via IPC sockets.
 - 🎹 **System Media Controls**: Native support for Play/Pause, Next/Prev, and Stop via system media keys (MPRIS/SMTC).
 - ⚡ **Async Core**: Powered by Tokio for a zero-latency, non-blocking UI.
+- 🖱️ Mouse Support: More accessible beyond just keyboard shortcuts.
 - 🎨 Toggle Themes and Animations easily with commands or from settings menu
 ## 🛠️ Prerequisites
 
