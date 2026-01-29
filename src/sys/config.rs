@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -371,20 +371,4 @@ impl Config {
     }
 }
 
-pub fn validate_executable(path: &Path) -> Result<()> {
-    let metadata =
-        std::fs::metadata(path).context(format!("Failed to get metadata for {:?}", path))?;
 
-    if !metadata.is_file() {
-        anyhow::bail!("{:?} is not a file", path);
-    }
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if metadata.permissions().mode() & 0o111 == 0 {
-            anyhow::bail!("{:?} is not executable", path);
-        }
-    }
-    Ok(())
-}

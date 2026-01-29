@@ -99,7 +99,7 @@ pub fn convert_json_to_netscape(json_path: &Path, netscape_path: &Path) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
+
 
     #[test]
     fn test_convert_robust() -> Result<()> {

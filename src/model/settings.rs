@@ -108,9 +108,7 @@ impl Settings {
         settings
     }
 
-    pub fn update_from_config(&mut self, config: Config) {
-        *self = Self::from_config(config);
-    }
+
 
     // Helper methods to get effective command
     pub fn mpv_cmd(&self) -> &str {
