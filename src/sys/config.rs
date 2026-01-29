@@ -276,6 +276,7 @@ impl Config {
         content.push_str("[cookies]\n");
         content.push_str(&format!("enabled = {}\n", self.cookies.enabled));
         content.push_str("# Cookie source for yt-dlp. \n");
+        content.push_str("# Please keep in mind that you have to install secretstorage to use browser cookies. \n");
         content.push_str("# Options for 'type': \"disabled\", \"browser\", \"netscape\", \"json\"\n");
         match &self.cookies.source {
             CookieSource::Disabled => {

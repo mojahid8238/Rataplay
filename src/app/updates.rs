@@ -317,7 +317,7 @@ pub fn move_selection(app: &mut App, delta: i32) {
         return;
     }
 
-    let len = if !app.search_results.is_empty() && !app.is_url_mode {
+    let len = if !app.search_results.is_empty() && (!app.is_url_mode || app.is_playlist_mode) {
         app.search_results.len() + 1 
     } else {
         app.search_results.len()

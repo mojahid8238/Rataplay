@@ -73,6 +73,7 @@ pub struct App {
     pub current_search_id: usize,
     // If the current search was a direct URL
     pub is_url_mode: bool,
+    pub is_playlist_mode: bool,
     // Messages/Status
     pub status_message: Option<String>,
     // Actions
@@ -541,6 +542,7 @@ impl App {
             is_searching: false,
             current_search_id: 0,
             is_url_mode: false,
+            is_playlist_mode: false,
             status_message: None,
             pending_action: None,
             image_tx,

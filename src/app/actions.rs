@@ -261,6 +261,7 @@ pub fn perform_search(app: &mut App) {
     }
 
     app.search_offset = 1; 
+    app.is_playlist_mode = is_direct_playlist_url;
 
     if is_url && is_direct_playlist_url {
         let _ = app
@@ -282,15 +283,22 @@ pub fn load_more(app: &mut App) {
         return;
     }
 
+    // Determine query and limit based on current view
+    let (query, limit) = if app.is_playlist_mode {
+        (app.search_query.clone(), app.playlist_limit)
+    } else {
+        (app.search_query.clone(), app.search_limit)
+    };
+
     app.is_searching = true;
-    app.search_offset += app.search_limit;
+    app.search_offset = (app.search_results.len() as u32) + 1;
     app.search_progress = Some(0.0);
     app.status_message = Some("Loading more...".to_string());
 
     let _ = app.search_tx.send((
-        app.search_query.clone(),
+        query,
         app.search_offset,
-        app.search_offset + (app.search_limit - 1),
+        app.search_offset + (limit - 1),
         app.current_search_id,
         app.show_live,
         app.show_playlists,

@@ -61,6 +61,17 @@ pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>, settin
             .stderr(Stdio::null());
     }
 
+    // Apply cookies to mpv (passed to ytdl-hook)
+    match &settings.cookie_mode {
+        crate::model::settings::CookieMode::Browser(b) => {
+            cmd.arg(format!("--ytdl-raw-options=cookies-from-browser={}", b));
+        }
+        crate::model::settings::CookieMode::File(p) => {
+            cmd.arg(format!("--ytdl-raw-options=cookies={}", p.to_string_lossy()));
+        }
+        crate::model::settings::CookieMode::Off => {}
+    }
+
     cmd.arg(url);
     let child = cmd.spawn()?;
     Ok(child)
@@ -80,6 +91,18 @@ pub fn play_audio(url: &str, settings: &Settings) -> Result<Child> {
     };
     cmd.arg(format!("--input-ipc-server={}", socket_path));
     cmd.arg("--idle=yes");
+
+    // Apply cookies to mpv (passed to ytdl-hook)
+    match &settings.cookie_mode {
+        crate::model::settings::CookieMode::Browser(b) => {
+            cmd.arg(format!("--ytdl-raw-options=cookies-from-browser={}", b));
+        }
+        crate::model::settings::CookieMode::File(p) => {
+            cmd.arg(format!("--ytdl-raw-options=cookies={}", p.to_string_lossy()));
+        }
+        crate::model::settings::CookieMode::Off => {}
+    }
+
     cmd.arg(url);
 
     cmd.stdin(Stdio::null())

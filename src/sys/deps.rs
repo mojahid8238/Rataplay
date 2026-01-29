@@ -14,6 +14,12 @@ pub fn check_dependencies(settings: &Settings) -> Result<DependencyStatus> {
     log::info!("  ffmpeg: {}", settings.ffmpeg_cmd());
     log::info!("  deno:   {}", settings.deno_cmd());
 
+    match &settings.cookie_mode {
+        crate::model::settings::CookieMode::Off => log::info!("  cookies: disabled"),
+        crate::model::settings::CookieMode::Browser(b) => log::info!("  cookies: browser ({})", b),
+        crate::model::settings::CookieMode::File(p) => log::info!("  cookies: file ({:?})", p),
+    }
+
     let version = check_yt_dlp(settings)?;
     let mpv = check_mpv(settings)?;
 

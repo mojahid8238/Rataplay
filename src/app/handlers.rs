@@ -170,7 +170,7 @@ pub fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                             app.previous_app_state = app.state;
                             app.state = AppState::ActionMenu;
                         }
-                    } else if !app.is_url_mode && item_index == app.search_results.len() {
+                    } else if (!app.is_url_mode || app.is_playlist_mode) && item_index == app.search_results.len() {
                          // Clicked "Load More" (approx)
                          actions::load_more(app);
                     }
@@ -818,6 +818,9 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                                 app.selected_playlist_indices.clear();
                                                 app.search_results.clear(); 
                                                 app.selected_result_index = Some(0); 
+                                                app.search_offset = 1;
+                                                app.is_playlist_mode = true;
+                                                app.is_url_mode = true; // Viewing a specific playlist is effectively URL mode
 
                                                 app.is_searching = true;
                                                 app.search_progress = Some(0.0);
@@ -973,7 +976,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                             if idx < app.search_results.len() {
                                 app.previous_app_state = app.state;
                                 app.state = AppState::ActionMenu;
-                            } else if !app.is_url_mode {
+                            } else if !app.is_url_mode || app.is_playlist_mode {
                                 actions::load_more(app);
                             }
                         }
@@ -983,6 +986,8 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                             app.search_results = children;
                             app.selected_result_index = prev_idx;
                             app.selected_playlist_indices.clear();
+                            app.is_playlist_mode = false;
+                            app.is_url_mode = app.search_query.starts_with("http") ;
                             app.status_message =
                                 Some("Returned to search results.".to_string());
                         }

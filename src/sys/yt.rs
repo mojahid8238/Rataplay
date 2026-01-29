@@ -4,15 +4,18 @@ use anyhow::{Context, Result};
 use serde_json::Value;
 use std::process::Stdio;
 use tokio::process::Command;
+use tokio::io::AsyncReadExt;
 
 pub fn build_base_command(settings: &Settings) -> Command {
     let mut cmd = Command::new(settings.ytdlp_cmd());
 
     match &settings.cookie_mode {
         CookieMode::File(path) => {
+            log::info!("Using cookies from file: {:?}", path);
             cmd.arg("--cookies").arg(path);
         }
         CookieMode::Browser(browser) => {
+            log::info!("Using cookies from browser: {}", browser);
             cmd.arg("--cookies-from-browser").arg(browser);
         }
         CookieMode::Off => {}
@@ -113,7 +116,7 @@ pub async fn search_videos_flat(
         .context("Failed to spawn yt-dlp")?;
 
     let stdout = child.stdout.take().context("Failed to take stdout")?;
-    let _stderr = child.stderr.take().context("Failed to take stderr")?; // Capture stderr
+    // Note: We do NOT take stderr here so that wait_with_output() can capture it if search fails.
     let mut reader = tokio::io::BufReader::new(stdout);
     let mut lines = tokio::io::AsyncBufReadExt::lines(&mut reader);
 
