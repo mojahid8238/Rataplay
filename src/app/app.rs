@@ -126,6 +126,9 @@ pub struct App {
     // Media Controls
     pub media_controller: Option<MediaController>,
     pub media_rx: UnboundedReceiver<MediaEvent>,
+
+    // Clipboard
+    pub clipboard: Option<arboard::Clipboard>,
 }
 
 impl App {
@@ -547,6 +550,7 @@ impl App {
             show_downloads_panel: false,
             media_controller,
             media_rx,
+            clipboard: arboard::Clipboard::new().ok(),
         }
     }
 }

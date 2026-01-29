@@ -144,6 +144,11 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
                     "Download All (Playlist)",
                     AppAction::DownloadPlaylist,
                 ));
+                actions.push(Action::new(
+                    KeyCode::Char('c'),
+                    "Copy URL/ID",
+                    AppAction::CopyUrlOrId,
+                ));
             } else {
                 actions.push(Action::new(
                     KeyCode::Char('w'),
@@ -164,6 +169,11 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
                     KeyCode::Char('d'),
                     "Download",
                     AppAction::Download,
+                ));
+                actions.push(Action::new(
+                    KeyCode::Char('c'),
+                    "Copy URL/ID",
+                    AppAction::CopyUrlOrId,
                 ));
 
                 // If this video belongs to a playlist, add playlist options

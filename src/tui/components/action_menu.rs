@@ -37,14 +37,18 @@ pub fn render_action_menu(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     let items: Vec<ListItem> = actions
         .iter()
         .map(|action| {
-            let key_str = match action.key {
-                KeyCode::Char(c) => c.to_string(),
-                KeyCode::Enter => "Enter".to_string(),
-                _ => "".to_string(),
+            let key_str = if action.action == crate::app::AppAction::CopyUrlOrId {
+                "C/I".to_string()
+            } else {
+                match action.key {
+                    KeyCode::Char(c) => c.to_string().to_uppercase(),
+                    KeyCode::Enter => "ENTER".to_string(),
+                    _ => "".to_string(),
+                }
             };
             let content = Line::from(vec![
                 Span::styled(
-                    format!(" [{}] ", key_str.to_uppercase()),
+                    format!(" [{}] ", key_str),
                     Style::default()
                         .fg(app.theme.highlight)
                         .add_modifier(Modifier::BOLD),

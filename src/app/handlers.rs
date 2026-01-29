@@ -551,8 +551,17 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                     }
 
                     if let Some(action) =
-                        actions::get_available_actions(app).iter().find(|a| a.key == code)
+                        actions::get_available_actions(app).iter().find(|a| {
+                            a.key == code || 
+                            (a.action == AppAction::CopyUrlOrId && (code == KeyCode::Char('i') || code == KeyCode::Char('c')))
+                        })
                     {
+                        let effective_code = if action.action == AppAction::CopyUrlOrId {
+                            code
+                        } else {
+                            action.key
+                        };
+
                         match action.action {
                             AppAction::PlayLocalExternal => {
                                  if let Some(idx) = app.selected_local_file_index {
@@ -831,6 +840,25 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                                 app.status_message =
                                                     Some("Starting playlist download...".to_string());
 
+                                                app.state = app.previous_app_state;
+                                            }
+                                            AppAction::CopyUrlOrId => {
+                                                let text_to_copy = if effective_code == KeyCode::Char('i') {
+                                                    video.id.clone()
+                                                } else {
+                                                    video.url.clone()
+                                                };
+                                                let label = if effective_code == KeyCode::Char('i') { "ID" } else { "URL" };
+
+                                                if let Some(clipboard) = &mut app.clipboard {
+                                                    if clipboard.set_text(text_to_copy).is_ok() {
+                                                        app.status_message = Some(format!("{} copied to clipboard.", label));
+                                                    } else {
+                                                        app.status_message = Some(format!("Failed to copy {}.", label));
+                                                    }
+                                                } else {
+                                                    app.status_message = Some("Clipboard not available.".to_string());
+                                                }
                                                 app.state = app.previous_app_state;
                                             }
                                             _ => {
