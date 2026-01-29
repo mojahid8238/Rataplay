@@ -6,7 +6,7 @@ use std::process::Stdio;
 use tokio::process::Command;
 
 pub fn build_base_command(settings: &Settings) -> Command {
-    let mut cmd = Command::new(&settings.ytdlp_path);
+    let mut cmd = Command::new(settings.ytdlp_cmd());
 
     match &settings.cookie_mode {
         CookieMode::File(path) => {
@@ -16,6 +16,10 @@ pub fn build_base_command(settings: &Settings) -> Command {
             cmd.arg("--cookies-from-browser").arg(browser);
         }
         CookieMode::Off => {}
+    }
+
+    if settings.ffmpeg_cmd() != "ffmpeg" {
+        cmd.arg("--ffmpeg-location").arg(settings.ffmpeg_cmd());
     }
     
     cmd

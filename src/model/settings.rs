@@ -48,20 +48,24 @@ impl Settings {
         let mut settings = Self::default();
         
         settings.enable_logging = config.logging.enabled;
+        
+        // If any paths are provided, we implicitly "use custom paths" for those items,
+        // but we still honor the global enabled flag for whether we *save* them as enabled.
+        // However, the user wants them to be "first priority" if they are there.
         settings.use_custom_paths = config.executables.enabled;
 
-        // Populate paths from config if they exist
+        // Populate paths from config regardless of enabled status (to preserve them)
         if let Some(p) = config.executables.mpv {
-            settings.mpv_path = p.to_string_lossy().to_string();
+            settings.mpv_path = Config::expand_tilde(&p).to_string_lossy().to_string();
         }
         if let Some(p) = config.executables.ytdlp {
-            settings.ytdlp_path = p.to_string_lossy().to_string();
+            settings.ytdlp_path = Config::expand_tilde(&p).to_string_lossy().to_string();
         }
         if let Some(p) = config.executables.ffmpeg {
-            settings.ffmpeg_path = p.to_string_lossy().to_string();
+            settings.ffmpeg_path = Config::expand_tilde(&p).to_string_lossy().to_string();
         }
         if let Some(p) = config.executables.deno {
-            settings.deno_path = p.to_string_lossy().to_string();
+            settings.deno_path = Config::expand_tilde(&p).to_string_lossy().to_string();
         }
         
         // Cookie mode logic
@@ -90,5 +94,19 @@ impl Settings {
     
     pub fn update_from_config(&mut self, config: Config) {
         *self = Self::from_config(config);
+    }
+
+    // Helper methods to get effective command
+    pub fn mpv_cmd(&self) -> &str {
+        if self.use_custom_paths { &self.mpv_path } else { "mpv" }
+    }
+    pub fn ytdlp_cmd(&self) -> &str {
+        if self.use_custom_paths { &self.ytdlp_path } else { "yt-dlp" }
+    }
+    pub fn ffmpeg_cmd(&self) -> &str {
+        if self.use_custom_paths { &self.ffmpeg_path } else { "ffmpeg" }
+    }
+    pub fn deno_cmd(&self) -> &str {
+        if self.use_custom_paths { &self.deno_path } else { "deno" }
     }
 }

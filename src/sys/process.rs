@@ -10,7 +10,7 @@ fn is_audio_path(path: &str) -> bool {
 }
 
 pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>, settings: &Settings) -> Result<Child> {
-    let mut cmd = Command::new(&settings.mpv_path);
+    let mut cmd = Command::new(settings.mpv_cmd());
     cmd.kill_on_drop(true);
 
     if let Some(ua) = user_agent {
@@ -67,7 +67,7 @@ pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>, settin
 }
 
 pub fn play_audio(url: &str, settings: &Settings) -> Result<Child> {
-    let mut cmd = Command::new(&settings.mpv_path);
+    let mut cmd = Command::new(settings.mpv_cmd());
     cmd.arg("--no-video");
     cmd.arg("--ytdl-format=bestaudio/best");
     cmd.kill_on_drop(true);

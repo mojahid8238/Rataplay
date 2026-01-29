@@ -375,7 +375,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                     crate::tui::components::settings::SettingItem::UseCustomPaths => {
                                         app.settings.use_custom_paths = !app.settings.use_custom_paths;
                                         app.save_config();
-                                        app.status_message = Some("Restart required for path changes to take effect.".to_string());
+                                        app.status_message = Some("Change paths in config.toml and restart app for changes to take effect.".to_string());
                                     }
                                     crate::tui::components::settings::SettingItem::CookieMode => {
                                         // Cycle: Off -> File (if available) -> Browser (if available) -> Off

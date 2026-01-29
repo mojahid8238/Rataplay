@@ -190,16 +190,12 @@ impl App {
             animation: self.animation_mode,
             show_live: self.show_live,
             show_playlists: self.show_playlists,
-            executables: if self.settings.use_custom_paths {
-                crate::sys::config::Executables {
-                    enabled: true,
-                    mpv: if self.settings.mpv_path == "mpv" { None } else { Some(std::path::PathBuf::from(&self.settings.mpv_path)) },
-                    ytdlp: if self.settings.ytdlp_path == "yt-dlp" { None } else { Some(std::path::PathBuf::from(&self.settings.ytdlp_path)) },
-                    ffmpeg: if self.settings.ffmpeg_path == "ffmpeg" { None } else { Some(std::path::PathBuf::from(&self.settings.ffmpeg_path)) },
-                    deno: if self.settings.deno_path == "deno" { None } else { Some(std::path::PathBuf::from(&self.settings.deno_path)) },
-                }
-            } else {
-                crate::sys::config::Executables::default()
+            executables: crate::sys::config::Executables {
+                enabled: self.settings.use_custom_paths,
+                mpv: if self.settings.mpv_path == "mpv" { None } else { Some(std::path::PathBuf::from(&self.settings.mpv_path)) },
+                ytdlp: if self.settings.ytdlp_path == "yt-dlp" { None } else { Some(std::path::PathBuf::from(&self.settings.ytdlp_path)) },
+                ffmpeg: if self.settings.ffmpeg_path == "ffmpeg" { None } else { Some(std::path::PathBuf::from(&self.settings.ffmpeg_path)) },
+                deno: if self.settings.deno_path == "deno" { None } else { Some(std::path::PathBuf::from(&self.settings.deno_path)) },
             },
             cookies: crate::sys::config::Cookies {
                 enabled: !matches!(self.settings.cookie_mode, crate::model::settings::CookieMode::Off),
@@ -218,11 +214,12 @@ impl App {
     }
 
     pub fn new(config: crate::sys::config::Config, settings: Settings) -> Self {
-        // Validation/saving handled in main or here conditionally logic moved to main
-        // Always save on startup to ensure the config file is fully populated with comments and all current settings
-        let _ = config.save();
-        // Always save on startup to ensure the config file is fully populated with comments and all current settings
-        let _ = config.save();
+        // Only save if config file doesn't exist to generate default template
+        // This prevents overwriting user's custom comments/formatting on every startup
+        let config_path = crate::sys::config::Config::get_config_path();
+        if !config_path.exists() {
+             let _ = config.save();
+        }
 
         let (theme_index, theme) = crate::tui::components::theme::AVAILABLE_THEMES
             .iter()

@@ -166,23 +166,22 @@ impl Config {
         Self::default()
     }
     
+    pub fn expand_tilde(path: &Path) -> PathBuf {
+        let path_str = path.to_string_lossy();
+        if path_str.starts_with("~/") || path_str == "~" {
+            if let Some(home) = directories::UserDirs::new().map(|u| u.home_dir().to_path_buf()) {
+                if path_str == "~" {
+                    return home;
+                }
+                return home.join(&path_str[2..]);
+            }
+        }
+        path.to_path_buf()
+    }
+
     pub fn get_log_path(&self) -> Result<PathBuf> {
         if let Some(path) = &self.logging.path {
-            let mut path_str = path.to_string_lossy().to_string();
-            
-            // Expand Tilde (cross-platform)
-            if path_str.starts_with("~/") || path_str == "~" {
-                if let Some(home) = directories::UserDirs::new().map(|u| u.home_dir().to_path_buf()) {
-                    if path_str == "~" {
-                        path_str = home.to_string_lossy().to_string();
-                    } else {
-                        path_str = home.join(&path_str[2..]).to_string_lossy().to_string();
-                    }
-                }
-            }
-
-            // Expanded path
-            return Ok(PathBuf::from(path_str));
+            return Ok(Self::expand_tilde(path));
         }
         
         if let Some(dirs) = ProjectDirs::from("com", "rataplay", "rataplay") {

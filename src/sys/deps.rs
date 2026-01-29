@@ -8,6 +8,12 @@ pub struct DependencyStatus {
 }
 
 pub fn check_dependencies(settings: &Settings) -> Result<DependencyStatus> {
+    log::info!("Checking dependencies with priority paths:");
+    log::info!("  yt-dlp: {}", settings.ytdlp_cmd());
+    log::info!("  mpv:    {}", settings.mpv_cmd());
+    log::info!("  ffmpeg: {}", settings.ffmpeg_cmd());
+    log::info!("  deno:   {}", settings.deno_cmd());
+
     let version = check_yt_dlp(settings)?;
     let mpv = check_mpv(settings)?;
 
@@ -18,10 +24,10 @@ pub fn check_dependencies(settings: &Settings) -> Result<DependencyStatus> {
 }
 
 fn check_yt_dlp(settings: &Settings) -> Result<String> {
-    let output = Command::new(&settings.ytdlp_path)
+    let output = Command::new(settings.ytdlp_cmd())
         .arg("--version")
         .output()
-        .context("Failed to execute yt-dlp. Is it installed and in your PATH?")?;
+        .context(format!("Failed to execute yt-dlp at '{}'. Is it installed and in your PATH?", settings.ytdlp_cmd()))?;
 
     if !output.status.success() {
         bail!("yt-dlp command failed with status: {}", output.status);
@@ -33,7 +39,7 @@ fn check_yt_dlp(settings: &Settings) -> Result<String> {
 
 fn check_mpv(settings: &Settings) -> Result<bool> {
     // Just check availability
-    let output = Command::new(&settings.mpv_path).arg("--version").output();
+    let output = Command::new(settings.mpv_cmd()).arg("--version").output();
 
     match output {
         Ok(o) => Ok(o.status.success()),

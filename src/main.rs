@@ -65,7 +65,7 @@ async fn main() -> Result<()> {
     match sys::deps::check_dependencies(&settings) {
         Ok(status) => {
             // Run the update command to fetch live version info
-            let update_check = std::process::Command::new(&settings.ytdlp_path).arg("-U").output();
+            let update_check = std::process::Command::new(settings.ytdlp_cmd()).arg("-U").output();
 
             match update_check {
                 Ok(output) => {
