@@ -22,6 +22,7 @@ pub fn on_tick(app: &mut App) {
         match result {
             Ok((item, id)) => {
                 if id != app.current_search_id {
+                    log::debug!("Ignoring stale search result for ID: {}", id);
                     continue;
                 }
                 match item {
@@ -68,6 +69,7 @@ pub fn on_tick(app: &mut App) {
                 }
             }
             Err(e) => {
+                log::error!("Search error: {}", e);
                 app.is_searching = false;
                 app.status_message = Some(format!("Error: {}", e));
                 app.search_progress = None;
@@ -158,6 +160,7 @@ pub fn on_tick(app: &mut App) {
                 actions::refresh_local_files(app);
             }
             DownloadEvent::Error(id, error) => {
+                log::error!("Download error for video {}: {}", id, error);
                 if let Some(task) = app.download_manager.tasks.get_mut(&id) {
                     if task.status != crate::model::download::DownloadStatus::Canceled {
                         task.status = crate::model::download::DownloadStatus::Error(error);
@@ -165,6 +168,7 @@ pub fn on_tick(app: &mut App) {
                 }
             }
             DownloadEvent::Started(id, pid) => {
+                log::info!("Download started for video {} with PID {}", id, pid);
                 if let Some(task) = app.download_manager.tasks.get_mut(&id) {
                     task.pid = Some(pid);
                 }

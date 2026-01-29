@@ -1,7 +1,9 @@
 use crate::model::Video;
+use crate::model::settings::Settings;
 use anyhow::Result;
 use std::process::Stdio;
-use tokio::process::{Child, Command};
+use tokio::process::Child;
+use crate::sys::yt::build_base_command;
 
 pub fn parse_progress(line: &str) -> Option<(f64, String, String, String)> {
     if !line.starts_with("[download]") {
@@ -38,6 +40,7 @@ pub async fn start_download(
     video: &Video,
     format_id: &str,
     download_dir: &str,
+    settings: &Settings,
 ) -> Result<Child> {
     let download_dir = std::path::PathBuf::from(download_dir);
 
@@ -45,7 +48,7 @@ pub async fn start_download(
         anyhow::bail!("Failed to create download dir: {}", e);
     }
 
-    let mut cmd = Command::new("yt-dlp");
+    let mut cmd = build_base_command(settings);
     let format_arg = if format_id == "best" {
         "bestvideo+bestaudio/best".to_string()
     } else {
@@ -62,6 +65,12 @@ pub async fn start_download(
 
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-    let child = cmd.spawn()?;
+    log::info!("Starting download for video {}: {} (URL: {})", video.id, video.title, video.url);
+    log::debug!("Download command: {:?}", cmd);
+
+    let child = cmd.spawn().map_err(|e| {
+        log::error!("Failed to spawn yt-dlp for download: {}", e);
+        e
+    })?;
     Ok(child)
 }

@@ -12,6 +12,7 @@ use crate::tui::components::logo::AnimationMode;
 use crate::tui::components::theme::Theme;
 
 use super::{AppAction, AppState, DownloadControl, DownloadManager, InputMode};
+use crate::model::settings::Settings;
 
 pub struct App {
     pub running: bool,
@@ -57,6 +58,7 @@ pub struct App {
     pub animation_mode: AnimationMode,
     pub show_live: bool,
     pub show_playlists: bool,
+    pub settings: Settings,
 
     // Results
     pub search_results: Vec<Video>,
@@ -188,13 +190,37 @@ impl App {
             animation: self.animation_mode,
             show_live: self.show_live,
             show_playlists: self.show_playlists,
+            executables: if self.settings.use_custom_paths {
+                crate::sys::config::Executables {
+                    enabled: true,
+                    mpv: if self.settings.mpv_path == "mpv" { None } else { Some(std::path::PathBuf::from(&self.settings.mpv_path)) },
+                    ytdlp: if self.settings.ytdlp_path == "yt-dlp" { None } else { Some(std::path::PathBuf::from(&self.settings.ytdlp_path)) },
+                    ffmpeg: if self.settings.ffmpeg_path == "ffmpeg" { None } else { Some(std::path::PathBuf::from(&self.settings.ffmpeg_path)) },
+                    deno: if self.settings.deno_path == "deno" { None } else { Some(std::path::PathBuf::from(&self.settings.deno_path)) },
+                }
+            } else {
+                crate::sys::config::Executables::default()
+            },
+            cookies: crate::sys::config::Cookies {
+                enabled: !matches!(self.settings.cookie_mode, crate::model::settings::CookieMode::Off),
+                source: match &self.settings.cookie_mode {
+                    crate::model::settings::CookieMode::Off => crate::sys::config::CookieSource::Disabled,
+                    crate::model::settings::CookieMode::File(p) => crate::sys::config::CookieSource::Netscape(p.clone()),
+                    crate::model::settings::CookieMode::Browser(b) => crate::sys::config::CookieSource::Browser(b.clone()),
+                }
+            },
+            logging: crate::sys::config::Logging {
+                enabled: self.settings.enable_logging,
+                path: self.settings.log_path.clone(),
+            },
         };
         let _ = config.save();
     }
 
-    pub fn new() -> Self {
-        // Load Configuration
-        let config = crate::sys::config::Config::load();
+    pub fn new(config: crate::sys::config::Config, settings: Settings) -> Self {
+        // Validation/saving handled in main or here conditionally logic moved to main
+        // Always save on startup to ensure the config file is fully populated with comments and all current settings
+        let _ = config.save();
         // Always save on startup to ensure the config file is fully populated with comments and all current settings
         let _ = config.save();
 
@@ -210,12 +236,13 @@ impl App {
         let (result_tx, result_rx) =
             mpsc::unbounded_channel::<Result<(yt::SearchResult, usize), String>>();
 
-        // Spawn a background task to handle search requests
+        let settings_clone = settings.clone();
         tokio::spawn(async move {
             while let Some((query, start, end, id, show_live, show_playlists)) =
                 search_rx.recv().await
             {
                 let tx = result_tx.clone();
+                let settings_inner = settings_clone.clone();
                 tokio::spawn(async move {
                     let (item_tx, mut item_rx) = mpsc::unbounded_channel();
 
@@ -226,6 +253,7 @@ impl App {
                             end,
                             show_live,
                             show_playlists,
+                            settings_inner,
                             item_tx.clone(),
                         )
                         .await
@@ -266,9 +294,10 @@ impl App {
         let (format_tx, mut format_req_rx) = mpsc::unbounded_channel::<String>();
         let (format_res_tx, format_rx) = mpsc::unbounded_channel();
 
+        let settings_clone = settings.clone();
         tokio::spawn(async move {
             while let Some(url) = format_req_rx.recv().await {
-                match yt::get_video_formats(&url).await {
+                match yt::get_video_formats(&url, &settings_clone).await {
                     Ok(formats) => {
                         let _ = format_res_tx.send(Ok(formats));
                     }
@@ -293,6 +322,7 @@ impl App {
         let resolved_download_dir = local::resolve_path(&config.download_directory)
             .to_string_lossy()
             .to_string();
+        let settings_clone = settings.clone();
         tokio::spawn(async move {
             // Map video_id to its PID for control (pause/resume/cancel)
             let mut active_downloads_pids: HashMap<String, u32> = HashMap::new();
@@ -304,9 +334,10 @@ impl App {
                         if let Some((video, format_id)) = res {
                             let event_tx = download_event_tx.clone();
                             let video_id = video.id.clone();
-                            let mut child = match crate::sys::download::start_download(&video, &format_id, &resolved_download_dir).await {
+                            let mut child = match crate::sys::download::start_download(&video, &format_id, &resolved_download_dir, &settings_clone).await {
                                 Ok(child) => child,
                                 Err(e) => {
+                                    log::error!("Failed to start download for video {}: {}", video_id, e);
                                     let _ = event_tx.send(crate::model::download::DownloadEvent::Error(video_id.clone(), e.to_string()));
                                     continue;
                                 }
@@ -330,6 +361,7 @@ impl App {
 
                                 let mut stdout_reader = BufReader::new(stdout).lines();
                                 let mut stderr_reader = BufReader::new(stderr).lines();
+                                log::debug!("Monitoring download for video: {}", video_id);
 
                                 let mut last_progress_update = Instant::now();
                                 let min_update_interval = Duration::from_millis(500);
@@ -354,16 +386,17 @@ impl App {
                                                 // eprintln!("yt-dlp stdout for {}: {}", video_id, line);
                                             }
                                         }
-                                        Ok(Some(_line)) = stderr_reader.next_line() => {
-                                            // Handle stderr messages if needed, potentially errors or warnings
-                                            // eprintln!("yt-dlp stderr for {}: {}", video_id, line);
+                                        Ok(Some(line)) = stderr_reader.next_line() => {
+                                            log::warn!("yt-dlp stderr for {}: {}", video_id, line);
                                         }
                                         status = child.wait() => {
                                             match status {
                                                 Ok(exit_status) => {
                                                     if exit_status.success() {
+                                                        log::info!("Download finished successfully for video: {}", video_id);
                                                         let _ = monitor_event_tx.send(crate::model::download::DownloadEvent::Finished(video_id.clone()));
                                                     } else {
+                                                        log::error!("Download failed for video {}: exit code {:?}", video_id, exit_status.code());
                                                         let _ = monitor_event_tx.send(crate::model::download::DownloadEvent::Error(
                                                             video_id.clone(),
                                                             format!("Download failed with exit code: {:?}", exit_status.code()),
@@ -427,10 +460,11 @@ impl App {
         let (details_tx, mut details_req_rx) = mpsc::unbounded_channel::<Vec<String>>();
         let (details_res_tx, details_rx) = mpsc::unbounded_channel();
 
+        let settings_clone = settings.clone();
         tokio::spawn(async move {
             while let Some(ids) = details_req_rx.recv().await {
                 let res_tx = details_res_tx.clone();
-                if let Err(e) = yt::resolve_video_details(ids, res_tx.clone()).await {
+                if let Err(e) = yt::resolve_video_details(ids, settings_clone.clone(), res_tx.clone()).await {
                     let _ = res_tx.send(Err(e.to_string()));
                 }
             }
@@ -499,6 +533,7 @@ impl App {
             animation_mode: config.animation,
             show_live: config.show_live,
             show_playlists: config.show_playlists,
+            settings,
 
             search_results: Vec::new(),
             selected_result_index: None,

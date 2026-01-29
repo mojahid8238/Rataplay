@@ -2,10 +2,11 @@ use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use anyhow::{Context, Result};
 
 use crate::tui::components::logo::AnimationMode;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
     #[serde(default = "default_theme")]
     pub theme: String,
@@ -21,6 +22,78 @@ pub struct Config {
     pub show_live: bool,
     #[serde(default = "default_true")]
     pub show_playlists: bool,
+
+    // New Fields
+    #[serde(default)]
+    pub executables: Executables,
+    #[serde(default)]
+    pub cookies: Cookies,
+    #[serde(default)]
+    pub logging: Logging,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Executables {
+    #[serde(default = "default_false")]
+    pub enabled: bool,
+    pub mpv: Option<PathBuf>,
+    pub ytdlp: Option<PathBuf>,
+    pub ffmpeg: Option<PathBuf>,
+    pub deno: Option<PathBuf>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Cookies {
+    #[serde(default = "default_false")]
+    pub enabled: bool,
+    pub source: CookieSource,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(tag = "type", content = "value")]
+pub enum CookieSource {
+    #[serde(rename = "disabled")]
+    Disabled,
+    #[serde(rename = "browser")]
+    Browser(String),
+    #[serde(rename = "netscape")]
+    Netscape(PathBuf),
+    #[serde(rename = "json")]
+    Json(PathBuf),
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Logging {
+    #[serde(default = "default_false")]
+    pub enabled: bool,
+    pub path: Option<PathBuf>,
+}
+
+impl Default for Executables {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            mpv: None,
+            ytdlp: None,
+            ffmpeg: None,
+            deno: None,
+        }
+    }
+}
+
+impl Default for Cookies {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            source: CookieSource::Disabled,
+        }
+    }
+}
+
+impl Default for Logging {
+    fn default() -> Self {
+        Self { enabled: false, path: None }
+    }
 }
 
 fn default_theme() -> String { "Default".to_string() }
@@ -28,6 +101,7 @@ fn default_search_limit() -> u32 { 20 }
 fn default_playlist_limit() -> u32 { 15 }
 fn default_animation() -> AnimationMode { AnimationMode::Glitch }
 fn default_true() -> bool { true }
+fn default_false() -> bool { false }
 fn default_download_directory() -> String {
     ProjectDirs::from("com", "rataplay", "rataplay")
         .and_then(|_proj_dirs| {
@@ -55,6 +129,9 @@ impl Default for Config {
             animation: default_animation(),
             show_live: default_true(),
             show_playlists: default_true(),
+            executables: Executables::default(),
+            cookies: Cookies::default(),
+            logging: Logging::default(),
         }
     }
 }
@@ -71,14 +148,71 @@ impl Config {
 
     pub fn load() -> Self {
         let path = Self::get_config_path();
+        
+        // Ensure parent directory exists check
+        if !path.exists() {
+             if let Some(parent) = path.parent() {
+                 let _ = fs::create_dir_all(parent);
+             }
+        }
+
         if path.exists() {
-            if let Ok(content) = fs::read_to_string(path) {
+            if let Ok(content) = fs::read_to_string(&path) {
                 if let Ok(config) = toml::from_str(&content) {
                     return config;
                 }
             }
         }
         Self::default()
+    }
+    
+    pub fn get_log_path(&self) -> Result<PathBuf> {
+        if let Some(path) = &self.logging.path {
+            let mut path_str = path.to_string_lossy().to_string();
+            
+            // Expand Tilde (cross-platform)
+            if path_str.starts_with("~/") || path_str == "~" {
+                if let Some(home) = directories::UserDirs::new().map(|u| u.home_dir().to_path_buf()) {
+                    if path_str == "~" {
+                        path_str = home.to_string_lossy().to_string();
+                    } else {
+                        path_str = home.join(&path_str[2..]).to_string_lossy().to_string();
+                    }
+                }
+            }
+
+            // Expanded path
+            return Ok(PathBuf::from(path_str));
+        }
+        
+        if let Some(dirs) = ProjectDirs::from("com", "rataplay", "rataplay") {
+            #[cfg(target_os = "linux")]
+            {
+                 // Linux: ~/.local/state/rataplay/rataplay.log (XDG State Home)
+                 if let Some(state) = dirs.state_dir() {
+                     return Ok(state.join("rataplay.log"));
+                 }
+            }
+            
+            #[cfg(target_os = "macos")]
+            {
+                 // macOS: ~/Library/Logs/rataplay/rataplay.log
+                 if let Some(home) = directories::UserDirs::new().map(|u| u.home_dir().to_path_buf()) {
+                     return Ok(home.join("Library/Logs/rataplay/rataplay.log"));
+                 }
+            }
+            
+            #[cfg(target_os = "windows")]
+            {
+                 // Windows: Local AppData/rataplay/logs/rataplay.log
+                 return Ok(dirs.data_local_dir().join("logs").join("rataplay.log"));
+            }
+            
+            // Fallback for other Unix-like systems
+            return Ok(dirs.data_local_dir().join("rataplay.log"));
+        }
+        
+        anyhow::bail!("Could not determine project directories")
     }
 
     pub fn save(&self) -> anyhow::Result<()> {
@@ -111,9 +245,93 @@ impl Config {
         content.push_str(&format!("show_live = {}\n\n", self.show_live));
 
         content.push_str("# Whether to show playlists in search results.\n");
-        content.push_str(&format!("show_playlists = {}\n", self.show_playlists));
+        content.push_str(&format!("show_playlists = {}\n\n", self.show_playlists));
+
+        content.push_str("# --- Advanced Configuration ---\n\n");
+        
+        content.push_str("[executables]\n");
+        content.push_str(&format!("enabled = {}\n", self.executables.enabled));
+        content.push_str("# Absolute paths to binaries. If commented out, system PATH is used.\n");
+        if let Some(p) = &self.executables.mpv {
+            content.push_str(&format!("mpv = \"{}\"\n", p.to_string_lossy()));
+        } else {
+            content.push_str("# mpv = \"/usr/bin/mpv\"\n");
+        }
+        if let Some(p) = &self.executables.ytdlp {
+            content.push_str(&format!("ytdlp = \"{}\"\n", p.to_string_lossy()));
+        } else {
+            content.push_str("# ytdlp = \"/usr/bin/yt-dlp\"\n");
+        }
+        if let Some(p) = &self.executables.ffmpeg {
+            content.push_str(&format!("ffmpeg = \"{}\"\n", p.to_string_lossy()));
+        } else {
+            content.push_str("# ffmpeg = \"/usr/bin/ffmpeg\"\n");
+        }
+        if let Some(p) = &self.executables.deno {
+            content.push_str(&format!("deno = \"{}\"\n", p.to_string_lossy()));
+        } else {
+            content.push_str("# deno = \"/usr/bin/deno\"\n");
+        }
+        content.push_str("\n");
+
+        content.push_str("[cookies]\n");
+        content.push_str(&format!("enabled = {}\n", self.cookies.enabled));
+        content.push_str("# Cookie source for yt-dlp. \n");
+        content.push_str("# Options for 'type': \"disabled\", \"browser\", \"netscape\", \"json\"\n");
+        match &self.cookies.source {
+            CookieSource::Disabled => {
+                 content.push_str("source.type = \"disabled\"\n");
+                 content.push_str("# source.type = \"browser\"\n");
+                 content.push_str("# source.value = \"chrome\"\n");
+            }
+            CookieSource::Browser(name) => {
+                 content.push_str("source.type = \"browser\"\n");
+                 content.push_str(&format!("source.value = \"{}\"\n", name));
+            }
+            CookieSource::Netscape(path) => {
+                 content.push_str("source.type = \"netscape\"\n");
+                 content.push_str(&format!("source.value = \"{}\"\n", path.to_string_lossy()));
+            }
+            CookieSource::Json(path) => {
+                 content.push_str("source.type = \"json\"\n");
+                 content.push_str(&format!("source.value = \"{}\"\n", path.to_string_lossy()));
+            }
+        }
+        content.push_str("\n");
+
+        content.push_str("[logging]\n");
+        content.push_str("# Whether to enable application logging.\n");
+        content.push_str(&format!("enabled = {}\n", self.logging.enabled));
+        content.push_str("# The default location of log file is:\n");
+        content.push_str("# Linux:   ~/.local/state/rataplay/rataplay.log\n");
+        content.push_str("# Windows: %LOCALAPPDATA%/rataplay/logs/rataplay.log\n");
+        content.push_str("# macOS:   ~/Library/Logs/rataplay/rataplay.log\n");
+        if let Some(p) = &self.logging.path {
+            content.push_str(&format!("path = \"{}\"\n", p.to_string_lossy()));
+        } else {
+            content.push_str("# The path where log files will be written.\n");
+            content.push_str("# path = \"/absolute/path/to/rataplay.log\"\n");
+        }
 
         fs::write(path, content)?;
         Ok(())
     }
+}
+
+pub fn validate_executable(path: &Path) -> Result<()> {
+    let metadata = std::fs::metadata(path)
+        .context(format!("Failed to get metadata for {:?}", path))?;
+        
+    if !metadata.is_file() {
+        anyhow::bail!("{:?} is not a file", path);
+    }
+    
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if metadata.permissions().mode() & 0o111 == 0 {
+             anyhow::bail!("{:?} is not executable", path);
+        }
+    }
+    Ok(())
 }

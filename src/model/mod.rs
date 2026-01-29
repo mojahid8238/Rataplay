@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod download;
 pub mod local;
+pub mod settings;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Video {

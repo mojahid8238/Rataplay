@@ -20,26 +20,32 @@ pub async fn spawn_ipc_handler(
 
     #[cfg(unix)]
     {
-        if let Ok(stream) = tokio::net::UnixStream::connect(&socket_path).await {
-            let (reader, mut writer) = stream.into_split();
-            let mut reader = BufReader::new(reader);
+        match tokio::net::UnixStream::connect(&socket_path).await {
+            Ok(stream) => {
+                log::info!("Connected to MPV IPC socket: {}", socket_path);
+                let (reader, mut writer) = stream.into_split();
+                let mut reader = BufReader::new(reader);
 
-            // Spawning reader task
-            let reader_handle = tokio::spawn(async move {
-                let mut line = String::new();
-                while let Ok(n) = reader.read_line(&mut line).await {
-                    if n == 0 { break; }
-                    let _ = res_tx.send(line.clone());
-                    line.clear();
+                // Spawning reader task
+                let reader_handle = tokio::spawn(async move {
+                    let mut line = String::new();
+                    while let Ok(n) = reader.read_line(&mut line).await {
+                        if n == 0 { break; }
+                        let _ = res_tx.send(line.clone());
+                        line.clear();
+                    }
+                });
+
+                // Writer loop
+                while let Some(cmd) = cmd_rx.recv().await {
+                    let _ = writer.write_all(cmd.as_bytes()).await;
+                    let _ = writer.flush().await;
                 }
-            });
-
-            // Writer loop
-            while let Some(cmd) = cmd_rx.recv().await {
-                let _ = writer.write_all(cmd.as_bytes()).await;
-                let _ = writer.flush().await;
+                let _ = reader_handle.abort();
             }
-            let _ = reader_handle.abort();
+            Err(e) => {
+                log::error!("Failed to connect to MPV IPC socket {}: {}", socket_path, e);
+            }
         }
     }
 

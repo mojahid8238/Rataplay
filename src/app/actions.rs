@@ -242,6 +242,7 @@ pub fn perform_search(app: &mut App) {
     app.is_searching = true;
     app.current_search_id += 1;
     app.status_message = Some(format!("Searching for '{}'...", app.search_query));
+    log::info!("Searching for: '{}' (ID: {})", app.search_query, app.current_search_id);
 
     let is_url = 
         app.search_query.starts_with("http://") || app.search_query.starts_with("https://");
@@ -309,6 +310,7 @@ pub fn handle_paste(app: &mut App, text: String) {
 
 pub fn stop_playback(app: &mut App) {
     if let Some(mut child) = app.playback_process.take() {
+        log::info!("Stopping playback for: {:?}", app.playback_title);
         let _ = child.start_kill();
     }
     app.playback_cmd_tx = None;
@@ -330,6 +332,7 @@ pub fn stop_playback(app: &mut App) {
 pub fn toggle_pause(app: &mut App) {
     if app.playback_cmd_tx.is_some() {
         app.is_paused = !app.is_paused;
+        log::info!("Playback {}", if app.is_paused { "paused" } else { "resumed" });
         send_command(app, "{\"command\": [\"cycle\", \"pause\"]}\n");
         app.status_message = Some(if app.is_paused {
             "Paused".to_string()
@@ -369,9 +372,11 @@ pub fn start_terminal_loading(app: &mut App, url: String, _title: String) {
     app.terminal_loading_error = None;
     app.terminal_ready_url = None;
     let tx = app.terminal_ready_tx.clone();
+    let settings = app.settings.clone();
 
     tokio::spawn(async move {
-        let mut cmd = tokio::process::Command::new("yt-dlp");
+        // We use configured yt-dlp path for user-agent check too (though arguably less critical)
+        let mut cmd = tokio::process::Command::new(&settings.ytdlp_path);
         cmd.arg("--user-agent");
         let ua = match cmd.output().await {
             Ok(out) if out.status.success() => {
@@ -380,7 +385,7 @@ pub fn start_terminal_loading(app: &mut App, url: String, _title: String) {
             _ => "Mozilla/5.0".to_string(), 
         };
 
-        match yt::get_best_stream_url(&url).await {
+        match yt::get_best_stream_url(&url, &settings).await {
             Ok(direct_url) => {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                 let _ = tx.send(Ok(format!("{}|{}", direct_url, ua)));

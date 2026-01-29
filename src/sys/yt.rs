@@ -1,8 +1,25 @@
 use crate::model::{Video, VideoFormat};
+use crate::model::settings::{Settings, CookieMode};
 use anyhow::{Context, Result};
 use serde_json::Value;
 use std::process::Stdio;
 use tokio::process::Command;
+
+pub fn build_base_command(settings: &Settings) -> Command {
+    let mut cmd = Command::new(&settings.ytdlp_path);
+
+    match &settings.cookie_mode {
+        CookieMode::File(path) => {
+            cmd.arg("--cookies").arg(path);
+        }
+        CookieMode::Browser(browser) => {
+            cmd.arg("--cookies-from-browser").arg(browser);
+        }
+        CookieMode::Off => {}
+    }
+    
+    cmd
+}
 
 pub enum SearchResult {
     Video(Video),
@@ -15,6 +32,7 @@ pub async fn search_videos_flat(
     end: u32,
     show_live: bool,
     show_playlists: bool,
+    settings: Settings,
     tx: tokio::sync::mpsc::UnboundedSender<Result<SearchResult, String>>,
 ) -> Result<()> {
     let is_url = query.starts_with("http://") || query.starts_with("https://");
@@ -82,7 +100,8 @@ pub async fn search_videos_flat(
         ]
     };
 
-    let mut child = Command::new("yt-dlp")
+    log::info!("Searching YouTube with args: {:?}", args);
+    let mut child = build_base_command(&settings)
         .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -324,6 +343,7 @@ pub async fn search_videos_flat(
 
     if !output.status.success() {
         let err_msg = String::from_utf8_lossy(&output.stderr);
+        log::error!("yt-dlp search error: {}", err_msg);
         let _ = tx.send(Err(format!("yt-dlp error: {}", err_msg)));
         anyhow::bail!("yt-dlp exited with error: {}", err_msg);
     }
@@ -334,6 +354,7 @@ pub async fn search_videos_flat(
 
 pub async fn resolve_video_details(
     items: Vec<String>,
+    settings: Settings,
     tx: tokio::sync::mpsc::UnboundedSender<Result<Video, String>>,
 ) -> Result<()> {
     if items.is_empty() {
@@ -345,7 +366,7 @@ pub async fn resolve_video_details(
         args.push(item);
     }
 
-    let mut child = Command::new("yt-dlp")
+    let mut child = build_base_command(&settings)
         .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -457,8 +478,9 @@ pub async fn resolve_video_details(
     Ok(())
 }
 
-pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
-    let output = Command::new("yt-dlp")
+pub async fn get_video_formats(url: &str, settings: &Settings) -> Result<Vec<VideoFormat>> {
+    log::info!("Fetching formats for URL: {}", url);
+    let output = build_base_command(settings)
         .arg("--dump-json")
         .arg("--no-playlist")
         .arg(url)
@@ -555,9 +577,9 @@ pub async fn get_video_formats(url: &str) -> Result<Vec<VideoFormat>> {
     Ok(formats)
 }
 
-pub async fn get_best_stream_url(url: &str) -> Result<String> {
+pub async fn get_best_stream_url(url: &str, settings: &Settings) -> Result<String> {
     // We use -g to get the URL.
-    let output = Command::new("yt-dlp")
+    let output = build_base_command(settings)
         .arg("-g")
         .arg("-f")
         .arg("bestvideo+bestaudio/best")
@@ -571,7 +593,7 @@ pub async fn get_best_stream_url(url: &str) -> Result<String> {
         let lines: Vec<&str> = s.lines().collect();
         if lines.is_empty() {
             // Fallback to simple 'best'
-            let fallback = Command::new("yt-dlp")
+            let fallback = build_base_command(settings)
                 .arg("-g")
                 .arg("-f")
                 .arg("best")
@@ -586,7 +608,7 @@ pub async fn get_best_stream_url(url: &str) -> Result<String> {
         }
 
         if lines.len() >= 2 {
-            let fallback = Command::new("yt-dlp")
+            let fallback = build_base_command(settings)
                 .arg("-g")
                 .arg("-f")
                 .arg("best")
@@ -605,7 +627,7 @@ pub async fn get_best_stream_url(url: &str) -> Result<String> {
         Ok(lines[0].trim().to_string())
     } else {
         // Final fallback to 'best'
-        let fallback = Command::new("yt-dlp")
+        let fallback = build_base_command(settings)
             .arg("-g")
             .arg("-f")
             .arg("best")

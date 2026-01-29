@@ -14,6 +14,9 @@ pub enum SettingItem {
     DownloadDirectory,
     ShowLive,
     ShowPlaylists,
+    EnableLogging,
+    UseCustomPaths,
+    CookieMode,
 }
 
 impl SettingItem {
@@ -26,6 +29,9 @@ impl SettingItem {
             Self::DownloadDirectory,
             Self::ShowLive,
             Self::ShowPlaylists,
+            Self::EnableLogging,
+            Self::UseCustomPaths,
+            Self::CookieMode,
         ]
     }
 
@@ -38,6 +44,9 @@ impl SettingItem {
             Self::DownloadDirectory => "Download Directory",
             Self::ShowLive => "Show Live Streams",
             Self::ShowPlaylists => "Show Playlists",
+            Self::EnableLogging => "Enable Logging",
+            Self::UseCustomPaths => "Use Custom Paths",
+            Self::CookieMode => "Cookie Mode",
         }
     }
 }
@@ -63,6 +72,13 @@ pub fn render_settings_menu(f: &mut Frame, app: &mut App, area: Rect) {
                 SettingItem::DownloadDirectory => app.download_directory.clone(),
                 SettingItem::ShowLive => (if app.show_live { "On" } else { "Off" }).to_string(),
                 SettingItem::ShowPlaylists => (if app.show_playlists { "On" } else { "Off" }).to_string(),
+                SettingItem::EnableLogging => (if app.settings.enable_logging { "On" } else { "Off" }).to_string(),
+                SettingItem::UseCustomPaths => (if app.settings.use_custom_paths { "On" } else { "Off" }).to_string(),
+                SettingItem::CookieMode => match &app.settings.cookie_mode {
+                    crate::model::settings::CookieMode::Off => "Off".to_string(),
+                    crate::model::settings::CookieMode::File(_) => "File (Configured)".to_string(),
+                    crate::model::settings::CookieMode::Browser(b) => format!("Browser ({})", b),
+                },
             };
 
             let content = Line::from(vec![

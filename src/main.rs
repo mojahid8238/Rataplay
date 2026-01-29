@@ -4,6 +4,7 @@ mod model;
 mod sys;
 mod tui;
 
+
 use anyhow::Result;
 use app::{App, AppAction, handle_key_event, handle_mouse_event, handle_paste, perform_search, stop_playback, on_tick};
 use clap::Parser;
@@ -14,6 +15,7 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use crate::model::settings::Settings;
 use ratatui::{backend::CrosstermBackend, Terminal};
 use ratatui_image::picker::Picker;
 use std::process::exit;
@@ -43,10 +45,27 @@ async fn main() -> Result<()> {
 
     println!("Checking dependencies...");
 
-    match sys::deps::check_dependencies() {
+    // Load configuration early
+    let config = crate::sys::config::Config::load();
+    let settings = Settings::from_config(config.clone());
+
+    // Initialize logging if enabled
+    if config.logging.enabled {
+        if let Ok(log_path) = config.get_log_path() {
+            if let Err(e) = crate::sys::logging::init_logger(log_path) {
+                eprintln!("Failed to initialize logger: {}", e);
+            } else {
+                log::info!("Rataplay starting up...");
+                log::info!("Log path: {:?}", config.get_log_path().unwrap_or_default());
+            }
+        }
+    }
+
+    log::info!("Checking dependencies...");
+    match sys::deps::check_dependencies(&settings) {
         Ok(status) => {
             // Run the update command to fetch live version info
-            let update_check = std::process::Command::new("yt-dlp").arg("-U").output();
+            let update_check = std::process::Command::new(&settings.ytdlp_path).arg("-U").output();
 
             match update_check {
                 Ok(output) => {
@@ -148,7 +167,7 @@ async fn main() -> Result<()> {
     }
 
     // Create App
-    let mut app = App::new();
+    let mut app = App::new(config, settings.clone());
 
     // Handle startup query if provided
     if let Some(query) = args.query {
@@ -188,7 +207,7 @@ async fn main() -> Result<()> {
 
                 match action {
                     AppAction::WatchExternal => {
-                        match sys::process::play_video(&full_url.to_string(), false, None) {
+                        match sys::process::play_video(&full_url.to_string(), false, None, &settings) {
                             Ok(child) => {
                                 let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                                 let (res_tx, res_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -216,7 +235,7 @@ async fn main() -> Result<()> {
                         }
                     }
                     AppAction::ListenAudio => {
-                        match sys::process::play_audio(&full_url.to_string()) {
+                        match sys::process::play_audio(&full_url.to_string(), &settings) {
                             Ok(child) => {
                                 let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                                 let (res_tx, res_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -265,7 +284,7 @@ async fn main() -> Result<()> {
                     (url.as_str(), None)
                 };
 
-                if let Ok(mut child) = sys::process::play_video(final_url, true, ua) {
+                if let Ok(mut child) = sys::process::play_video(final_url, true, ua, &settings) {
                     // Update media controller
                     if let Some(mc) = &mut app.media_controller {
                         let _ = mc.set_metadata("Terminal Playback", None, None);

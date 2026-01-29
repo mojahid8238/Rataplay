@@ -1,14 +1,15 @@
 use anyhow::{bail, Context, Result};
 use std::process::Command;
+use crate::model::settings::Settings;
 
 pub struct DependencyStatus {
     pub yt_dlp_version: String,
     pub mpv_installed: bool,
 }
 
-pub fn check_dependencies() -> Result<DependencyStatus> {
-    let version = check_yt_dlp()?;
-    let mpv = check_mpv()?;
+pub fn check_dependencies(settings: &Settings) -> Result<DependencyStatus> {
+    let version = check_yt_dlp(settings)?;
+    let mpv = check_mpv(settings)?;
 
     Ok(DependencyStatus {
         yt_dlp_version: version,
@@ -16,8 +17,8 @@ pub fn check_dependencies() -> Result<DependencyStatus> {
     })
 }
 
-fn check_yt_dlp() -> Result<String> {
-    let output = Command::new("yt-dlp")
+fn check_yt_dlp(settings: &Settings) -> Result<String> {
+    let output = Command::new(&settings.ytdlp_path)
         .arg("--version")
         .output()
         .context("Failed to execute yt-dlp. Is it installed and in your PATH?")?;
@@ -30,9 +31,9 @@ fn check_yt_dlp() -> Result<String> {
     Ok(version_str)
 }
 
-fn check_mpv() -> Result<bool> {
+fn check_mpv(settings: &Settings) -> Result<bool> {
     // Just check availability
-    let output = Command::new("mpv").arg("--version").output();
+    let output = Command::new(&settings.mpv_path).arg("--version").output();
 
     match output {
         Ok(o) => Ok(o.status.success()),

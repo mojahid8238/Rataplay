@@ -276,6 +276,8 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
         },
     };
 
+    log::debug!("Key event: {:?}, input_mode: {:?}", code, app.input_mode);
+
     match app.input_mode {
         InputMode::Normal => {
             if code == KeyCode::Char('t') && key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -365,6 +367,50 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                         app.settings_input = app.download_directory.clone();
                                         app.settings_cursor_position = app.settings_input.len();
                                         app.status_message = Some("Enter new Download Directory: ".to_string());
+                                    }
+                                    crate::tui::components::settings::SettingItem::EnableLogging => {
+                                        app.settings.enable_logging = !app.settings.enable_logging;
+                                        app.save_config(); 
+                                    }
+                                    crate::tui::components::settings::SettingItem::UseCustomPaths => {
+                                        app.settings.use_custom_paths = !app.settings.use_custom_paths;
+                                        app.save_config();
+                                        app.status_message = Some("Restart required for path changes to take effect.".to_string());
+                                    }
+                                    crate::tui::components::settings::SettingItem::CookieMode => {
+                                        // Cycle: Off -> File (if available) -> Browser (if available) -> Off
+                                        // Simplification: Toggle Off <-> Configured Default
+                                        // Since we don't have a UI to input paths/browser names yet, best we can do is toggle between Off and whatever was in the config/struct initially.
+                                        // Actually, let's try a cycle if we can restore previous state, but we don't store "previous state".
+                                        
+                                        // Better approach: 
+                                        // If Off -> Switch to File (if path exists in struct) or Browser (if name exists in struct) or Default
+                                        // But wait, the struct holds the *current* state.
+                                        
+                                        match app.settings.cookie_mode {
+                                            crate::model::settings::CookieMode::Off => {
+                                                // Try to switch to File if we have one configured (or default one?)
+                                                if let Some(path) = &app.settings.cookie_file {
+                                                     app.settings.cookie_mode = crate::model::settings::CookieMode::File(path.clone());
+                                                } else if let Some(browser) = &app.settings.browser_name {
+                                                     app.settings.cookie_mode = crate::model::settings::CookieMode::Browser(browser.clone());
+                                                } else {
+                                                     // Fallback or nothing? maybe just show status
+                                                     app.status_message = Some("No cookie source configured in config.toml".to_string());
+                                                }
+                                            }
+                                            crate::model::settings::CookieMode::File(_) => {
+                                                if let Some(browser) = &app.settings.browser_name {
+                                                     app.settings.cookie_mode = crate::model::settings::CookieMode::Browser(browser.clone());
+                                                } else {
+                                                     app.settings.cookie_mode = crate::model::settings::CookieMode::Off;
+                                                }
+                                            }
+                                            crate::model::settings::CookieMode::Browser(_) => {
+                                                app.settings.cookie_mode = crate::model::settings::CookieMode::Off;
+                                            }
+                                        }
+                                        app.save_config();
                                     }
                                 }
                             }

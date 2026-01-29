@@ -1,6 +1,7 @@
 use anyhow::Result;
 use std::process::Stdio;
 use tokio::process::{Child, Command};
+use crate::model::settings::Settings;
 
 fn is_audio_path(path: &str) -> bool {
     let audio_exts = [".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".aac", ".wma"];
@@ -8,8 +9,8 @@ fn is_audio_path(path: &str) -> bool {
     audio_exts.iter().any(|ext| path_lower.ends_with(ext))
 }
 
-pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>) -> Result<Child> {
-    let mut cmd = Command::new("mpv");
+pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>, settings: &Settings) -> Result<Child> {
+    let mut cmd = Command::new(&settings.mpv_path);
     cmd.kill_on_drop(true);
 
     if let Some(ua) = user_agent {
@@ -65,8 +66,8 @@ pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>) -> Res
     Ok(child)
 }
 
-pub fn play_audio(url: &str) -> Result<Child> {
-    let mut cmd = Command::new("mpv");
+pub fn play_audio(url: &str, settings: &Settings) -> Result<Child> {
+    let mut cmd = Command::new(&settings.mpv_path);
     cmd.arg("--no-video");
     cmd.arg("--ytdl-format=bestaudio/best");
     cmd.kill_on_drop(true);
