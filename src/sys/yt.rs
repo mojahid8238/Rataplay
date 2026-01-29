@@ -265,12 +265,15 @@ pub async fn search_videos_flat(
             let upload_date = val["upload_date"].as_str().map(|s| s.to_string());
 
             if video_type == crate::model::VideoType::Playlist {
-                // Prioritize canonical playlist URL using playlist_id if available
-                if !playlist_id_str.is_empty() {
+                // Always construct canonical URL for real playlists
+                if is_real_playlist_id {
                     final_url =
                         format!("https://www.youtube.com/playlist?list={}", playlist_id_str);
                 } else if let Some(p_url) = val["playlist_webpage_url"].as_str() {
-                    final_url = p_url.to_string();
+                    // Only use provided URL if it's not a search result page
+                    if !p_url.contains("results?search_query") {
+                        final_url = p_url.to_string();
+                    }
                 }
             }
 
@@ -279,11 +282,11 @@ pub async fn search_videos_flat(
             let (parent_playlist_id, parent_playlist_url, parent_playlist_title) =
                 if video_type == crate::model::VideoType::Video && is_real_playlist_id {
                     // This is a video from a real playlist
-                    let playlist_url = val["playlist_webpage_url"].as_str().map(|s| s.to_string());
+                    let playlist_url = format!("https://www.youtube.com/playlist?list={}", playlist_id_str);
                     let playlist_title = val["playlist_title"].as_str().map(|s| s.to_string());
                     (
                         Some(playlist_id_str.to_string()),
-                        playlist_url,
+                        Some(playlist_url),
                         playlist_title,
                     )
                 } else {
@@ -405,11 +408,11 @@ pub async fn resolve_video_details(
 
             let (parent_playlist_id, parent_playlist_url, parent_playlist_title) =
                 if is_real_playlist_id {
-                    let playlist_url = val["playlist_webpage_url"].as_str().map(|s| s.to_string());
+                    let playlist_url = format!("https://www.youtube.com/playlist?list={}", playlist_id_str);
                     let playlist_title = val["playlist_title"].as_str().map(|s| s.to_string());
                     (
                         Some(playlist_id_str.to_string()),
-                        playlist_url,
+                        Some(playlist_url),
                         playlist_title,
                     )
                 } else {

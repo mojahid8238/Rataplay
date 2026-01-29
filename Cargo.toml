@@ -20,6 +20,7 @@ libc = "0.2.155"
 souvlaki = "0.7.3"
 directories = "6.0.0"
 arboard = "3.4.1"
+webbrowser = "1.0.1"
 
 [profile.release]
 opt-level = 3

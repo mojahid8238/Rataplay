@@ -31,6 +31,7 @@ pub enum AppAction {
     ResumeDownload,
     ResumeSelectedDownloads,
     CopyUrlOrId,
+    OpenInBrowser,
 }
 
 pub struct Action {

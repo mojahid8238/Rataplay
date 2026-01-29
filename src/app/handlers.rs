@@ -861,6 +861,19 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                                 }
                                                 app.state = app.previous_app_state;
                                             }
+                                            AppAction::OpenInBrowser => {
+                                                let target_url = if app.playlist_stack.is_empty() {
+                                                    video.parent_playlist_url.as_ref().unwrap_or(&url)
+                                                } else {
+                                                    &url
+                                                };
+                                                if webbrowser::open(target_url).is_ok() {
+                                                    app.status_message = Some("Opening in browser...".to_string());
+                                                } else {
+                                                    app.status_message = Some("Failed to open browser.".to_string());
+                                                }
+                                                app.state = app.previous_app_state;
+                                            }
                                             _ => {
                                                 app.pending_action = Some((action.action, url, title));
                                                 app.state = app.previous_app_state;

@@ -145,6 +145,11 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
                     AppAction::DownloadPlaylist,
                 ));
                 actions.push(Action::new(
+                    KeyCode::Char('o'),
+                    "Open in Browser",
+                    AppAction::OpenInBrowser,
+                ));
+                actions.push(Action::new(
                     KeyCode::Char('c'),
                     "Copy URL/ID",
                     AppAction::CopyUrlOrId,
@@ -169,6 +174,11 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
                     KeyCode::Char('d'),
                     "Download",
                     AppAction::Download,
+                ));
+                actions.push(Action::new(
+                    KeyCode::Char('o'),
+                    "Open in Browser",
+                    AppAction::OpenInBrowser,
                 ));
                 actions.push(Action::new(
                     KeyCode::Char('c'),
