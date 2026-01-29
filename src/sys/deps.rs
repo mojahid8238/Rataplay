@@ -17,7 +17,8 @@ pub fn check_dependencies(settings: &Settings) -> Result<DependencyStatus> {
     match &settings.cookie_mode {
         crate::model::settings::CookieMode::Off => log::info!("  cookies: disabled"),
         crate::model::settings::CookieMode::Browser(b) => log::info!("  cookies: browser ({})", b),
-        crate::model::settings::CookieMode::File(p) => log::info!("  cookies: file ({:?})", p),
+        crate::model::settings::CookieMode::Netscape(p) => log::info!("  cookies: netscape file ({:?})", p),
+        crate::model::settings::CookieMode::Json(p) => log::info!("  cookies: JSON file ({:?})", p),
     }
 
     let version = check_yt_dlp(settings)?;

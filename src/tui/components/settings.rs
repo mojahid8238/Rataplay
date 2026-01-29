@@ -1,9 +1,6 @@
-use ratatui::{
-    prelude::*,
-    widgets::*,
-};
-use crate::app::App;
 use super::widgets::centered_rect_fixed;
+use crate::app::App;
+use ratatui::{prelude::*, widgets::*};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingItem {
@@ -53,7 +50,7 @@ impl SettingItem {
 
 pub fn render_settings_menu(f: &mut Frame, app: &mut App, area: Rect) {
     let items = SettingItem::all();
-    
+
     let block = Block::default()
         .title(" Settings ")
         .borders(Borders::ALL)
@@ -71,18 +68,36 @@ pub fn render_settings_menu(f: &mut Frame, app: &mut App, area: Rect) {
                 SettingItem::PlaylistLimit => app.playlist_limit.to_string(),
                 SettingItem::DownloadDirectory => app.download_directory.clone(),
                 SettingItem::ShowLive => (if app.show_live { "On" } else { "Off" }).to_string(),
-                SettingItem::ShowPlaylists => (if app.show_playlists { "On" } else { "Off" }).to_string(),
-                SettingItem::EnableLogging => (if app.settings.enable_logging { "On" } else { "Off" }).to_string(),
-                SettingItem::UseCustomPaths => (if app.settings.use_custom_paths { "On" } else { "Off" }).to_string(),
-                SettingItem::CookieMode => match &app.settings.cookie_mode {
-                    crate::model::settings::CookieMode::Off => "Off".to_string(),
-                    crate::model::settings::CookieMode::File(_) => "File (Configured)".to_string(),
-                    crate::model::settings::CookieMode::Browser(b) => format!("Browser ({})", b),
-                },
+                SettingItem::ShowPlaylists => {
+                    (if app.show_playlists { "On" } else { "Off" }).to_string()
+                }
+                SettingItem::EnableLogging => (if app.settings.enable_logging {
+                    "On"
+                } else {
+                    "Off"
+                })
+                .to_string(),
+                SettingItem::UseCustomPaths => (if app.settings.use_custom_paths {
+                    "On"
+                } else {
+                    "Off"
+                })
+                .to_string(),
+                SettingItem::CookieMode => {
+                    (if app.settings.cookie_mode == crate::model::settings::CookieMode::Off {
+                        "Off"
+                    } else {
+                        "On"
+                    })
+                    .to_string()
+                }
             };
 
             let content = Line::from(vec![
-                Span::styled(format!("{:<22}: ", item.name()), Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    format!("{:<22}: ", item.name()),
+                    Style::default().add_modifier(Modifier::BOLD),
+                ),
                 Span::styled(value, Style::default().fg(app.theme.accent)),
             ]);
             ListItem::new(content)
@@ -120,11 +135,22 @@ fn render_input_popup(f: &mut Frame, app: &App, item: SettingItem) {
         .border_style(Style::default().fg(app.theme.accent));
 
     let width = (area.width as usize).saturating_sub(2);
-    let scroll = app.settings_cursor_position.saturating_sub(width.saturating_sub(1));
-    let display_text: String = app.settings_input.chars().skip(scroll).take(width).collect();
+    let scroll = app
+        .settings_cursor_position
+        .saturating_sub(width.saturating_sub(1));
+    let display_text: String = app
+        .settings_input
+        .chars()
+        .skip(scroll)
+        .take(width)
+        .collect();
 
     let input = Paragraph::new(display_text)
-        .style(Style::default().fg(app.theme.accent).add_modifier(Modifier::BOLD))
+        .style(
+            Style::default()
+                .fg(app.theme.accent)
+                .add_modifier(Modifier::BOLD),
+        )
         .block(block);
 
     f.render_widget(input, area);

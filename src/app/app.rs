@@ -193,18 +193,46 @@ impl App {
             show_playlists: self.show_playlists,
             executables: crate::sys::config::Executables {
                 enabled: self.settings.use_custom_paths,
-                mpv: if self.settings.mpv_path == "mpv" { None } else { Some(std::path::PathBuf::from(&self.settings.mpv_path)) },
-                ytdlp: if self.settings.ytdlp_path == "yt-dlp" { None } else { Some(std::path::PathBuf::from(&self.settings.ytdlp_path)) },
-                ffmpeg: if self.settings.ffmpeg_path == "ffmpeg" { None } else { Some(std::path::PathBuf::from(&self.settings.ffmpeg_path)) },
-                deno: if self.settings.deno_path == "deno" { None } else { Some(std::path::PathBuf::from(&self.settings.deno_path)) },
+                mpv: if self.settings.mpv_path == "mpv" {
+                    None
+                } else {
+                    Some(std::path::PathBuf::from(&self.settings.mpv_path))
+                },
+                ytdlp: if self.settings.ytdlp_path == "yt-dlp" {
+                    None
+                } else {
+                    Some(std::path::PathBuf::from(&self.settings.ytdlp_path))
+                },
+                ffmpeg: if self.settings.ffmpeg_path == "ffmpeg" {
+                    None
+                } else {
+                    Some(std::path::PathBuf::from(&self.settings.ffmpeg_path))
+                },
+                deno: if self.settings.deno_path == "deno" {
+                    None
+                } else {
+                    Some(std::path::PathBuf::from(&self.settings.deno_path))
+                },
             },
             cookies: crate::sys::config::Cookies {
-                enabled: !matches!(self.settings.cookie_mode, crate::model::settings::CookieMode::Off),
+                enabled: !matches!(
+                    self.settings.cookie_mode,
+                    crate::model::settings::CookieMode::Off
+                ),
                 source: match &self.settings.cookie_mode {
-                    crate::model::settings::CookieMode::Off => crate::sys::config::CookieSource::Disabled,
-                    crate::model::settings::CookieMode::File(p) => crate::sys::config::CookieSource::Netscape(p.clone()),
-                    crate::model::settings::CookieMode::Browser(b) => crate::sys::config::CookieSource::Browser(b.clone()),
-                }
+                    crate::model::settings::CookieMode::Off => {
+                        crate::sys::config::CookieSource::Off
+                    }
+                    crate::model::settings::CookieMode::Netscape(p) => {
+                        crate::sys::config::CookieSource::Netscape(p.clone())
+                    }
+                    crate::model::settings::CookieMode::Json(p) => {
+                        crate::sys::config::CookieSource::Json(p.clone())
+                    }
+                    crate::model::settings::CookieMode::Browser(b) => {
+                        crate::sys::config::CookieSource::Browser(b.clone())
+                    }
+                },
             },
             logging: crate::sys::config::Logging {
                 enabled: self.settings.enable_logging,
@@ -219,7 +247,7 @@ impl App {
         // This prevents overwriting user's custom comments/formatting on every startup
         let config_path = crate::sys::config::Config::get_config_path();
         if !config_path.exists() {
-             let _ = config.save();
+            let _ = config.save();
         }
 
         let (theme_index, theme) = crate::tui::components::theme::AVAILABLE_THEMES
@@ -462,7 +490,9 @@ impl App {
         tokio::spawn(async move {
             while let Some(ids) = details_req_rx.recv().await {
                 let res_tx = details_res_tx.clone();
-                if let Err(e) = yt::resolve_video_details(ids, settings_clone.clone(), res_tx.clone()).await {
+                if let Err(e) =
+                    yt::resolve_video_details(ids, settings_clone.clone(), res_tx.clone()).await
+                {
                     let _ = res_tx.send(Err(e.to_string()));
                 }
             }

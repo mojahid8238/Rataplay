@@ -66,8 +66,13 @@ pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>, settin
         crate::model::settings::CookieMode::Browser(b) => {
             cmd.arg(format!("--ytdl-raw-options=cookies-from-browser={}", b));
         }
-        crate::model::settings::CookieMode::File(p) => {
+        crate::model::settings::CookieMode::Netscape(p) => {
             cmd.arg(format!("--ytdl-raw-options=cookies={}", p.to_string_lossy()));
+        }
+        crate::model::settings::CookieMode::Json(p) => {
+            let mut tmp = p.clone();
+            tmp.set_extension("netscape.tmp");
+            cmd.arg(format!("--ytdl-raw-options=cookies={}", tmp.to_string_lossy()));
         }
         crate::model::settings::CookieMode::Off => {}
     }
@@ -97,8 +102,13 @@ pub fn play_audio(url: &str, settings: &Settings) -> Result<Child> {
         crate::model::settings::CookieMode::Browser(b) => {
             cmd.arg(format!("--ytdl-raw-options=cookies-from-browser={}", b));
         }
-        crate::model::settings::CookieMode::File(p) => {
+        crate::model::settings::CookieMode::Netscape(p) => {
             cmd.arg(format!("--ytdl-raw-options=cookies={}", p.to_string_lossy()));
+        }
+        crate::model::settings::CookieMode::Json(p) => {
+            let mut tmp = p.clone();
+            tmp.set_extension("netscape.tmp");
+            cmd.arg(format!("--ytdl-raw-options=cookies={}", tmp.to_string_lossy()));
         }
         crate::model::settings::CookieMode::Off => {}
     }

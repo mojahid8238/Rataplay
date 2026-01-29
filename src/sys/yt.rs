@@ -1,18 +1,33 @@
+use crate::model::settings::{CookieMode, Settings};
 use crate::model::{Video, VideoFormat};
-use crate::model::settings::{Settings, CookieMode};
+use crate::sys::cookies;
 use anyhow::{Context, Result};
 use serde_json::Value;
 use std::process::Stdio;
 use tokio::process::Command;
-use tokio::io::AsyncReadExt;
 
 pub fn build_base_command(settings: &Settings) -> Command {
     let mut cmd = Command::new(settings.ytdlp_cmd());
 
     match &settings.cookie_mode {
-        CookieMode::File(path) => {
-            log::info!("Using cookies from file: {:?}", path);
+        CookieMode::Netscape(path) => {
+            log::info!("Using netscape cookies from file: {:?}", path);
             cmd.arg("--cookies").arg(path);
+        }
+        CookieMode::Json(path) => {
+            log::info!("Using JSON cookies from file: {:?}", path);
+            // We need a temporary netscape file for yt-dlp
+            // We'll put it in the same directory as the JSON file or a temp dir.
+            // Let's use a .netscape extension next to the JSON file for simplicity and persistence cache.
+            let mut netscape_path = path.clone();
+            netscape_path.set_extension("netscape.tmp");
+
+            if let Err(e) = cookies::convert_json_to_netscape(path, &netscape_path) {
+                log::error!("Failed to convert JSON cookies: {}", e);
+            } else {
+                log::info!("Converted JSON cookies to {:?}", netscape_path);
+                cmd.arg("--cookies").arg(netscape_path);
+            }
         }
         CookieMode::Browser(browser) => {
             log::info!("Using cookies from browser: {}", browser);
@@ -24,7 +39,7 @@ pub fn build_base_command(settings: &Settings) -> Command {
     if settings.ffmpeg_cmd() != "ffmpeg" {
         cmd.arg("--ffmpeg-location").arg(settings.ffmpeg_cmd());
     }
-    
+
     cmd
 }
 
@@ -308,7 +323,8 @@ pub async fn search_videos_flat(
             let (parent_playlist_id, parent_playlist_url, parent_playlist_title) =
                 if video_type == crate::model::VideoType::Video && is_real_playlist_id {
                     // This is a video from a real playlist
-                    let playlist_url = format!("https://www.youtube.com/playlist?list={}", playlist_id_str);
+                    let playlist_url =
+                        format!("https://www.youtube.com/playlist?list={}", playlist_id_str);
                     let playlist_title = val["playlist_title"].as_str().map(|s| s.to_string());
                     (
                         Some(playlist_id_str.to_string()),
@@ -436,7 +452,8 @@ pub async fn resolve_video_details(
 
             let (parent_playlist_id, parent_playlist_url, parent_playlist_title) =
                 if is_real_playlist_id {
-                    let playlist_url = format!("https://www.youtube.com/playlist?list={}", playlist_id_str);
+                    let playlist_url =
+                        format!("https://www.youtube.com/playlist?list={}", playlist_id_str);
                     let playlist_title = val["playlist_title"].as_str().map(|s| s.to_string());
                     (
                         Some(playlist_id_str.to_string()),

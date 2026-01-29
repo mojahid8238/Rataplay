@@ -370,47 +370,42 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                     }
                                     crate::tui::components::settings::SettingItem::EnableLogging => {
                                         app.settings.enable_logging = !app.settings.enable_logging;
+                                        
+                                        let config = crate::sys::config::Config::load();
+                                        let log_path = config.get_log_path()
+                                            .map(|p| p.to_string_lossy().to_string())
+                                            .unwrap_or_else(|_| "Unknown".to_string());
+                                        
+                                        app.status_message = Some(format!(
+                                            "Logging {}. Path: {}", 
+                                            if app.settings.enable_logging { "Enabled" } else { "Disabled" },
+                                            log_path
+                                        ));
+                                        
                                         app.save_config(); 
                                     }
                                     crate::tui::components::settings::SettingItem::UseCustomPaths => {
                                         app.settings.use_custom_paths = !app.settings.use_custom_paths;
                                         app.save_config();
-                                        app.status_message = Some("Change paths in config.toml and restart app for changes to take effect.".to_string());
+                                        app.status_message = Some("Enabled. Change binary paths in config.toml if needed.".to_string());
                                     }
                                     crate::tui::components::settings::SettingItem::CookieMode => {
-                                        // Cycle: Off -> File (if available) -> Browser (if available) -> Off
-                                        // Simplification: Toggle Off <-> Configured Default
-                                        // Since we don't have a UI to input paths/browser names yet, best we can do is toggle between Off and whatever was in the config/struct initially.
-                                        // Actually, let's try a cycle if we can restore previous state, but we don't store "previous state".
-                                        
-                                        // Better approach: 
-                                        // If Off -> Switch to File (if path exists in struct) or Browser (if name exists in struct) or Default
-                                        // But wait, the struct holds the *current* state.
-                                        
-                                        match app.settings.cookie_mode {
-                                            crate::model::settings::CookieMode::Off => {
-                                                // Try to switch to File if we have one configured (or default one?)
-                                                if let Some(path) = &app.settings.cookie_file {
-                                                     app.settings.cookie_mode = crate::model::settings::CookieMode::File(path.clone());
-                                                } else if let Some(browser) = &app.settings.browser_name {
-                                                     app.settings.cookie_mode = crate::model::settings::CookieMode::Browser(browser.clone());
-                                                } else {
-                                                     // Fallback or nothing? maybe just show status
-                                                     app.status_message = Some("No cookie source configured in config.toml".to_string());
-                                                }
+                                        if app.settings.cookie_mode == crate::model::settings::CookieMode::Off {
+                                            // Toggle ON: restore last known source or default
+                                            if let Some(path) = &app.settings.cookie_file {
+                                                // We'll default to Netscape here; specific type changes
+                                                // should be managed in config.toml
+                                                app.settings.cookie_mode = crate::model::settings::CookieMode::Netscape(path.clone());
+                                            } else if let Some(browser) = &app.settings.browser_name {
+                                                app.settings.cookie_mode = crate::model::settings::CookieMode::Browser(browser.clone());
+                                            } else {
+                                                app.settings.cookie_mode = crate::model::settings::CookieMode::Browser("chrome".to_string());
                                             }
-                                            crate::model::settings::CookieMode::File(_) => {
-                                                if let Some(browser) = &app.settings.browser_name {
-                                                     app.settings.cookie_mode = crate::model::settings::CookieMode::Browser(browser.clone());
-                                                } else {
-                                                     app.settings.cookie_mode = crate::model::settings::CookieMode::Off;
-                                                }
-                                            }
-                                            crate::model::settings::CookieMode::Browser(_) => {
-                                                app.settings.cookie_mode = crate::model::settings::CookieMode::Off;
-                                            }
+                                        } else {
+                                            app.settings.cookie_mode = crate::model::settings::CookieMode::Off;
                                         }
                                         app.save_config();
+                                        app.status_message = Some("Enabled. Change cookie settings in config.toml if needed.".to_string());
                                     }
                                 }
                             }

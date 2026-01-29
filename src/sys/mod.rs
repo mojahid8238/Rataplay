@@ -8,3 +8,4 @@ pub mod media;
 pub mod config;
 pub mod mpv_ipc;
 pub mod logging;
+pub mod cookies;
