@@ -54,7 +54,7 @@ paru -S rataplay
 - `-h, --help`: Show the custom help screen.
 
 ### Config File
-- You can change the settings or your preferences from `~/.config/rataplay/config.toml`
+- You can change the settings or your preferences from `~/.config/rataplay/config.toml`. See [config.toml](./config.toml) demo here.
 
 
 ### Keybindings
