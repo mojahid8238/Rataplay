@@ -385,6 +385,7 @@ pub fn start_terminal_loading(app: &mut App, url: String, _title: String) {
     tokio::spawn(async move {
         // We use configured yt-dlp path for user-agent check too (though arguably less critical)
         let mut cmd = tokio::process::Command::new(settings.ytdlp_cmd());
+        cmd.kill_on_drop(true);
         cmd.arg("--dump-user-agent"); // Assuming intention is to dump UA
         let ua = match cmd.output().await {
             Ok(out) if out.status.success() => {

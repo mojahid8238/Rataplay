@@ -7,6 +7,7 @@ use ratatui::layout::Rect;
 use ratatui::widgets::{ListState, TableState};
 use std::time::{Duration, Instant};
 use std::sync::{Arc, RwLock};
+use std::collections::HashMap;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::tui::components::logo::AnimationMode;
@@ -61,6 +62,8 @@ pub struct App {
     pub show_playlists: bool,
     pub settings: Settings,
     pub shared_settings: Arc<RwLock<Settings>>,
+    pub abort_handles: Vec<tokio::task::AbortHandle>,
+    pub active_download_handles: Arc<RwLock<HashMap<String, tokio::task::AbortHandle>>>,
 
     // Results
     pub search_results: Vec<Video>,
@@ -322,6 +325,33 @@ impl App {
         }
     }
 
+    pub fn cleanup(&mut self) {
+        log::info!("Starting application cleanup...");
+        
+        // Stop playback
+        if let Some(mut child) = self.playback_process.take() {
+            log::info!("Killing playback process...");
+            let _ = child.start_kill();
+        }
+
+        // Abort all background tasks
+        log::info!("Aborting background tasks ({})...", self.abort_handles.len());
+        for handle in &self.abort_handles {
+            handle.abort();
+        }
+
+        // Abort all active downloads explicitly
+        if let Ok(handles) = self.active_download_handles.read() {
+            log::info!("Aborting active downloads ({})...", handles.len());
+            for handle in handles.values() {
+                handle.abort();
+            }
+        }
+        
+        // The Download manager task handles its own children abort when its cmd_rx closes (on drop)
+        // or when it is aborted itself.
+    }
+
     pub fn new(config: crate::sys::config::Config, settings: Settings) -> Self {
         // Only save if config file doesn't exist to generate default template
         // This prevents overwriting user's custom comments/formatting on every startup
@@ -342,10 +372,13 @@ impl App {
         let (result_tx, result_rx) =
             mpsc::unbounded_channel::<Result<(yt::SearchResult, usize), String>>();
 
+        let mut abort_handles = Vec::new();
+        let active_download_handles = Arc::new(RwLock::new(HashMap::new()));
+
         let shared_settings = Arc::new(RwLock::new(settings.clone()));
 
         let task_settings = shared_settings.clone();
-        tokio::spawn(async move {
+        let search_task = tokio::spawn(async move {
             while let Some((query, start, end, id, show_live, show_playlists)) =
                 search_rx.recv().await
             {
@@ -384,11 +417,12 @@ impl App {
                 });
             }
         });
+        abort_handles.push(search_task.abort_handle());
 
         let (image_tx, mut image_cmd_rx) = mpsc::unbounded_channel::<(String, String)>();
         let (image_res_tx, image_rx) = mpsc::unbounded_channel();
 
-        tokio::spawn(async move {
+        let image_task = tokio::spawn(async move {
             while let Some((id, url)) = image_cmd_rx.recv().await {
                 let res_tx = image_res_tx.clone();
                 tokio::spawn(async move {
@@ -398,12 +432,13 @@ impl App {
                 });
             }
         });
+        abort_handles.push(image_task.abort_handle());
 
         let (format_tx, mut format_req_rx) = mpsc::unbounded_channel::<String>();
         let (format_res_tx, format_rx) = mpsc::unbounded_channel();
 
         let task_settings = shared_settings.clone();
-        tokio::spawn(async move {
+        let format_task = tokio::spawn(async move {
             while let Some(url) = format_req_rx.recv().await {
                 let current_settings = task_settings.read().unwrap().clone();
                 match yt::get_video_formats(&url, &current_settings).await {
@@ -416,6 +451,7 @@ impl App {
                 }
             }
         });
+        abort_handles.push(format_task.abort_handle());
 
         let (new_download_tx, mut new_download_cmd_rx) =
             mpsc::unbounded_channel::<(Video, String)>();
@@ -429,7 +465,8 @@ impl App {
 
         // Spawn a background task to handle download requests and control messages
         let task_settings = shared_settings.clone();
-        tokio::spawn(async move {
+        let task_active_handles = active_download_handles.clone();
+        let download_manager_task = tokio::spawn(async move {
             // Map video_id to its PID for control (pause/resume/cancel)
             let mut active_downloads_pids: HashMap<String, u32> = HashMap::new();
 
@@ -461,7 +498,9 @@ impl App {
 
                             // Spawn a separate task to monitor this specific download's stdout/stderr and status
                             let monitor_event_tx = event_tx.clone();
-                            tokio::spawn(async move {
+                            let monitor_active_handles = task_active_handles.clone();
+                            let v_id = video_id.clone();
+                            let monitor_task = tokio::spawn(async move {
                                 let stdout = child
                                     .stdout
                                     .take()
@@ -473,7 +512,7 @@ impl App {
 
                                 let mut stdout_reader = BufReader::new(stdout).lines();
                                 let mut stderr_reader = BufReader::new(stderr).lines();
-                                log::debug!("Monitoring download for video: {}", video_id);
+                                log::debug!("Monitoring download for video: {}", v_id);
 
                                 let mut last_progress_update = Instant::now();
                                 let min_update_interval = Duration::from_millis(500);
@@ -486,7 +525,7 @@ impl App {
                                             {
                                                 if last_progress_update.elapsed() >= min_update_interval {
                                                     let _ = monitor_event_tx.send(crate::model::download::DownloadEvent::Update(
-                                                        video_id.clone(),
+                                                        v_id.clone(),
                                                         progress,
                                                         speed,
                                                         eta,
@@ -499,25 +538,25 @@ impl App {
                                             }
                                         }
                                         Ok(Some(line)) = stderr_reader.next_line() => {
-                                            log::warn!("yt-dlp stderr for {}: {}", video_id, line);
+                                            log::warn!("yt-dlp stderr for {}: {}", v_id, line);
                                         }
                                         status = child.wait() => {
                                             match status {
                                                 Ok(exit_status) => {
                                                     if exit_status.success() {
-                                                        log::info!("Download finished successfully for video: {}", video_id);
-                                                        let _ = monitor_event_tx.send(crate::model::download::DownloadEvent::Finished(video_id.clone()));
+                                                        log::info!("Download finished successfully for video: {}", v_id);
+                                                        let _ = monitor_event_tx.send(crate::model::download::DownloadEvent::Finished(v_id.clone()));
                                                     } else {
-                                                        log::error!("Download failed for video {}: exit code {:?}", video_id, exit_status.code());
+                                                        log::error!("Download failed for video {}: exit code {:?}", v_id, exit_status.code());
                                                         let _ = monitor_event_tx.send(crate::model::download::DownloadEvent::Error(
-                                                            video_id.clone(),
+                                                            v_id.clone(),
                                                             format!("Download failed with exit code: {:?}", exit_status.code()),
                                                         ));
                                                     }
                                                 }
                                                 Err(e) => {
                                                     let _ = monitor_event_tx.send(crate::model::download::DownloadEvent::Error(
-                                                        video_id.clone(),
+                                                        v_id.clone(),
                                                         format!("Failed to wait for download process: {}", e),
                                                     ));
                                                 }
@@ -527,7 +566,16 @@ impl App {
                                         else => break, // All streams closed and child exited
                                     }
                                 }
+                                
+                                // Remove itself from active handles on completion
+                                if let Ok(mut w) = monitor_active_handles.write() {
+                                    w.remove(&v_id);
+                                }
                             });
+                            
+                            if let Ok(mut w) = task_active_handles.write() {
+                                w.insert(video_id, monitor_task.abort_handle());
+                            }
                         } else {
                             break;
                         }
@@ -564,6 +612,7 @@ impl App {
                 }
             }
         });
+        abort_handles.push(download_manager_task.abort_handle());
 
         let (_, playback_res_rx) = mpsc::unbounded_channel();
         let (terminal_ready_tx, terminal_ready_rx) =
@@ -573,7 +622,7 @@ impl App {
         let (details_res_tx, details_rx) = mpsc::unbounded_channel();
 
         let task_settings = shared_settings.clone();
-        tokio::spawn(async move {
+        let details_task = tokio::spawn(async move {
             while let Some(ids) = details_req_rx.recv().await {
                 let res_tx = details_res_tx.clone();
                 let current_settings = task_settings.read().unwrap().clone();
@@ -584,6 +633,7 @@ impl App {
                 }
             }
         });
+        abort_handles.push(details_task.abort_handle());
 
         // Scan local files initially
         let download_path_buf = local::resolve_path(&config.download_directory);
@@ -650,6 +700,8 @@ impl App {
             show_playlists: config.show_playlists,
             settings,
             shared_settings,
+            abort_handles,
+            active_download_handles,
 
             search_results: Vec::new(),
             selected_result_index: None,
@@ -704,5 +756,11 @@ impl App {
             media_rx,
             clipboard: arboard::Clipboard::new().ok(),
         }
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        self.cleanup();
     }
 }

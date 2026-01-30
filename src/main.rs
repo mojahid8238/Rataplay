@@ -202,6 +202,15 @@ async fn main() -> Result<()> {
         }
     });
 
+    // Handle Ctrl+C for graceful shutdown
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
+    let shutdown_tx_clone = shutdown_tx.clone();
+    tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            let _ = shutdown_tx_clone.send(());
+        }
+    });
+
     // Handle startup query if provided
     if let Some(query) = args.query {
         app.search_query = query;
@@ -215,6 +224,11 @@ async fn main() -> Result<()> {
     let run_result = async {
         loop {
             terminal.draw(|f| tui::ui(f, &mut app, &mut picker))?;
+
+            // Check for shutdown signal
+            if shutdown_rx.try_recv().is_ok() {
+                app.running = false;
+            }
 
             // Check for config updates
             let mut reload = false;
@@ -418,6 +432,7 @@ async fn main() -> Result<()> {
     }.await;
 
     // Restore Terminal
+    app.cleanup();
     stop_playback(&mut app);
     cleanup_terminal(&mut terminal)?;
 

@@ -49,6 +49,7 @@ pub async fn start_download(
     }
 
     let mut cmd = build_base_command(settings);
+    cmd.kill_on_drop(true);
     let format_arg = if format_id == "best" {
         "bestvideo+bestaudio/best".to_string()
     } else {

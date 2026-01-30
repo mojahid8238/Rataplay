@@ -8,6 +8,7 @@ use tokio::process::Command;
 
 pub fn build_base_command(settings: &Settings) -> Command {
     let mut cmd = Command::new(settings.ytdlp_cmd());
+    cmd.kill_on_drop(true);
 
     match &settings.cookie_mode {
         CookieMode::Netscape(path) => {
