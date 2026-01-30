@@ -46,19 +46,28 @@ async fn main() -> Result<()> {
     println!("Checking dependencies...");
 
     // Load configuration early
-    let config = crate::sys::config::Config::load();
+    let config = match crate::sys::config::Config::load() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error loading config: {}. Using defaults.", e);
+            crate::sys::config::Config::default()
+        }
+    };
     let settings = Settings::from_config(config.clone());
 
-    // Initialize logging if enabled
-    if config.logging.enabled {
-        if let Ok(log_path) = config.get_log_path() {
-            if let Err(e) = crate::sys::logging::init_logger(log_path) {
-                eprintln!("Failed to initialize logger: {}", e);
-            } else {
+    // Initialize logging
+    if let Ok(log_path) = config.get_log_path() {
+        if let Err(e) = crate::sys::logging::init_logger(log_path, config.logging.enabled) {
+            eprintln!("Failed to initialize logger: {}", e);
+        } else {
+            if config.logging.enabled {
                 log::info!("Rataplay starting up...");
                 log::info!("Log path: {:?}", config.get_log_path().unwrap_or_default());
             }
         }
+    } else if config.logging.enabled {
+        // Only complain if it was supposed to be enabled but we couldn't get a path
+        eprintln!("Could not determine log path, logging disabled.");
     }
 
     log::info!("Checking dependencies...");
@@ -169,6 +178,30 @@ async fn main() -> Result<()> {
     // Create App
     let mut app = App::new(config, settings.clone());
 
+    // Config Hot Reloading
+    let (config_tx, mut config_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
+    tokio::spawn(async move {
+        let path = crate::sys::config::Config::get_config_path();
+        let mut last_mtime = if let Ok(metadata) = std::fs::metadata(&path) {
+            metadata.modified().ok()
+        } else {
+            None
+        };
+
+        let mut interval = tokio::time::interval(Duration::from_millis(500));
+        loop {
+            interval.tick().await;
+            if let Ok(metadata) = std::fs::metadata(&path) {
+                if let Ok(mtime) = metadata.modified() {
+                    if last_mtime != Some(mtime) {
+                        last_mtime = Some(mtime);
+                        let _ = config_tx.send(());
+                    }
+                }
+            }
+        }
+    });
+
     // Handle startup query if provided
     if let Some(query) = args.query {
         app.search_query = query;
@@ -182,6 +215,15 @@ async fn main() -> Result<()> {
     let run_result = async {
         loop {
             terminal.draw(|f| tui::ui(f, &mut app, &mut picker))?;
+
+            // Check for config updates
+            let mut reload = false;
+            while config_rx.try_recv().is_ok() {
+                reload = true;
+            }
+            if reload {
+                app.reload_config();
+            }
 
             let timeout = tick_rate
                 .checked_sub(last_tick.elapsed())

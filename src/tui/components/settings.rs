@@ -77,18 +77,29 @@ pub fn render_settings_menu(f: &mut Frame, app: &mut App, area: Rect) {
                     "Off"
                 })
                 .to_string(),
-                SettingItem::UseCustomPaths => (if app.settings.use_custom_paths {
-                    "On"
-                } else {
-                    "Off"
-                })
-                .to_string(),
-                SettingItem::CookieMode => {
-                    (if app.settings.cookie_mode == crate::model::settings::CookieMode::Off {
-                        "Off"
+                SettingItem::UseCustomPaths => {
+                    if !app.settings.use_custom_paths {
+                        "Off".to_string()
                     } else {
-                        "On"
-                    })
+                        // Check if any custom paths are actually set
+                        let has_custom_paths = app.settings.mpv_path != "mpv"
+                            || app.settings.ytdlp_path != "yt-dlp"
+                            || app.settings.ffmpeg_path != "ffmpeg"
+                            || app.settings.deno_path != "deno";
+                        
+                        if has_custom_paths {
+                            "On".to_string()
+                        } else {
+                            "Unsetted".to_string()
+                        }
+                    }
+                },
+                SettingItem::CookieMode => {
+                    match &app.settings.cookie_mode {
+                        crate::model::settings::CookieMode::Off => "Off",
+                        crate::model::settings::CookieMode::Unsetted => "Unsetted",
+                        _ => "On",
+                    }
                     .to_string()
                 }
             };

@@ -74,7 +74,7 @@ pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>, settin
             tmp.set_extension("netscape.tmp");
             cmd.arg(format!("--ytdl-raw-options=cookies={}", tmp.to_string_lossy()));
         }
-        crate::model::settings::CookieMode::Off => {}
+        crate::model::settings::CookieMode::Off | crate::model::settings::CookieMode::Unsetted => {}
     }
 
     cmd.arg(url);
@@ -110,7 +110,7 @@ pub fn play_audio(url: &str, settings: &Settings) -> Result<Child> {
             tmp.set_extension("netscape.tmp");
             cmd.arg(format!("--ytdl-raw-options=cookies={}", tmp.to_string_lossy()));
         }
-        crate::model::settings::CookieMode::Off => {}
+        crate::model::settings::CookieMode::Off | crate::model::settings::CookieMode::Unsetted => {}
     }
 
     cmd.arg(url);

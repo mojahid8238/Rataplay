@@ -6,6 +6,7 @@ use image::DynamicImage;
 use ratatui::layout::Rect;
 use ratatui::widgets::{ListState, TableState};
 use std::time::{Duration, Instant};
+use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::tui::components::logo::AnimationMode;
@@ -59,6 +60,7 @@ pub struct App {
     pub show_live: bool,
     pub show_playlists: bool,
     pub settings: Settings,
+    pub shared_settings: Arc<RwLock<Settings>>,
 
     // Results
     pub search_results: Vec<Video>,
@@ -142,6 +144,7 @@ impl App {
         self.status_message = Some(format!("Theme: {}", self.theme.name));
 
         self.save_config();
+        self.reload_config();
     }
 
     pub fn toggle_animation(&mut self) {
@@ -154,6 +157,7 @@ impl App {
         self.status_message = Some(format!("Animation: {}", self.animation_mode.name()));
 
         self.save_config();
+        self.reload_config();
     }
 
     pub fn toggle_live(&mut self) {
@@ -163,6 +167,7 @@ impl App {
             if self.show_live { "On" } else { "Off" }
         ));
         self.save_config();
+        self.reload_config();
 
         if self.state == AppState::Results && !self.is_url_mode {
             crate::app::actions::perform_search(self);
@@ -176,6 +181,7 @@ impl App {
             if self.show_playlists { "On" } else { "Off" }
         ));
         self.save_config();
+        self.reload_config();
 
         if self.state == AppState::Results && !self.is_url_mode {
             crate::app::actions::perform_search(self);
@@ -193,25 +199,26 @@ impl App {
             show_playlists: self.show_playlists,
             executables: crate::sys::config::Executables {
                 enabled: self.settings.use_custom_paths,
-                mpv: if self.settings.mpv_path == "mpv" {
-                    None
-                } else {
+                // Always preserve the paths from Settings, regardless of enabled state
+                mpv: if self.settings.mpv_path != "mpv" {
                     Some(std::path::PathBuf::from(&self.settings.mpv_path))
-                },
-                ytdlp: if self.settings.ytdlp_path == "yt-dlp" {
-                    None
                 } else {
+                    None
+                },
+                ytdlp: if self.settings.ytdlp_path != "yt-dlp" {
                     Some(std::path::PathBuf::from(&self.settings.ytdlp_path))
-                },
-                ffmpeg: if self.settings.ffmpeg_path == "ffmpeg" {
-                    None
                 } else {
+                    None
+                },
+                ffmpeg: if self.settings.ffmpeg_path != "ffmpeg" {
                     Some(std::path::PathBuf::from(&self.settings.ffmpeg_path))
-                },
-                deno: if self.settings.deno_path == "deno" {
-                    None
                 } else {
+                    None
+                },
+                deno: if self.settings.deno_path != "deno" {
                     Some(std::path::PathBuf::from(&self.settings.deno_path))
+                } else {
+                    None
                 },
             },
             cookies: crate::sys::config::Cookies {
@@ -221,7 +228,33 @@ impl App {
                 ),
                 source: match &self.settings.cookie_mode {
                     crate::model::settings::CookieMode::Off => {
-                        crate::sys::config::CookieSource::Off
+                        // Preserve the source configuration even when disabled
+                        if let Some(path) = &self.settings.cookie_file {
+                            // Determine if it's JSON or Netscape based on file extension
+                            if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                                crate::sys::config::CookieSource::Json(path.clone())
+                            } else {
+                                crate::sys::config::CookieSource::Netscape(path.clone())
+                            }
+                        } else if let Some(browser) = &self.settings.browser_name {
+                            crate::sys::config::CookieSource::Browser(browser.clone())
+                        } else {
+                            crate::sys::config::CookieSource::Off
+                        }
+                    }
+                    crate::model::settings::CookieMode::Unsetted => {
+                        // Enabled but not configured - preserve source if available
+                        if let Some(path) = &self.settings.cookie_file {
+                            if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                                crate::sys::config::CookieSource::Json(path.clone())
+                            } else {
+                                crate::sys::config::CookieSource::Netscape(path.clone())
+                            }
+                        } else if let Some(browser) = &self.settings.browser_name {
+                            crate::sys::config::CookieSource::Browser(browser.clone())
+                        } else {
+                            crate::sys::config::CookieSource::Off
+                        }
                     }
                     crate::model::settings::CookieMode::Netscape(p) => {
                         crate::sys::config::CookieSource::Netscape(p.clone())
@@ -240,6 +273,53 @@ impl App {
             },
         };
         let _ = config.save();
+    }
+
+    pub fn reload_config(&mut self) {
+        match crate::sys::config::Config::load() {
+            Ok(config) => {
+                // Sync App state with Config
+                let (_, theme) = crate::tui::components::theme::AVAILABLE_THEMES
+                    .iter()
+                    .enumerate()
+                    .find(|(_, t)| t.name == config.theme)
+                    .map(|(i, t)| (i, *t))
+                    .unwrap_or((0, crate::tui::components::theme::AVAILABLE_THEMES[0]));
+                self.theme = theme;
+                // Update theme index for consistency
+                self.theme_index = crate::tui::components::theme::AVAILABLE_THEMES
+                    .iter()
+                    .position(|t| t.name == theme.name)
+                    .unwrap_or(0);
+
+                self.search_limit = config.search_limit;
+                self.playlist_limit = config.playlist_limit;
+                self.download_directory = config.download_directory.clone();
+                self.animation_mode = config.animation;
+                self.show_live = config.show_live;
+                self.show_playlists = config.show_playlists;
+
+                self.settings = crate::model::settings::Settings::from_config(config);
+                
+                // Update shared settings for background tasks
+                if let Ok(mut w) = self.shared_settings.write() {
+                    *w = self.settings.clone();
+                }
+
+                // specific hot-reload actions
+                let log_level = if self.settings.enable_logging {
+                    log::LevelFilter::Info
+                } else {
+                    log::LevelFilter::Off
+                };
+                log::set_max_level(log_level);
+                
+                self.status_message = Some("Configuration reloaded successfully.".to_string());
+            }
+            Err(e) => {
+                self.status_message = Some(format!("Config Error: {}", e));
+            }
+        }
     }
 
     pub fn new(config: crate::sys::config::Config, settings: Settings) -> Self {
@@ -262,13 +342,15 @@ impl App {
         let (result_tx, result_rx) =
             mpsc::unbounded_channel::<Result<(yt::SearchResult, usize), String>>();
 
-        let settings_clone = settings.clone();
+        let shared_settings = Arc::new(RwLock::new(settings.clone()));
+
+        let task_settings = shared_settings.clone();
         tokio::spawn(async move {
             while let Some((query, start, end, id, show_live, show_playlists)) =
                 search_rx.recv().await
             {
                 let tx = result_tx.clone();
-                let settings_inner = settings_clone.clone();
+                let current_settings = task_settings.read().unwrap().clone();
                 tokio::spawn(async move {
                     let (item_tx, mut item_rx) = mpsc::unbounded_channel();
 
@@ -279,7 +361,7 @@ impl App {
                             end,
                             show_live,
                             show_playlists,
-                            settings_inner,
+                            current_settings,
                             item_tx.clone(),
                         )
                         .await
@@ -320,10 +402,11 @@ impl App {
         let (format_tx, mut format_req_rx) = mpsc::unbounded_channel::<String>();
         let (format_res_tx, format_rx) = mpsc::unbounded_channel();
 
-        let settings_clone = settings.clone();
+        let task_settings = shared_settings.clone();
         tokio::spawn(async move {
             while let Some(url) = format_req_rx.recv().await {
-                match yt::get_video_formats(&url, &settings_clone).await {
+                let current_settings = task_settings.read().unwrap().clone();
+                match yt::get_video_formats(&url, &current_settings).await {
                     Ok(formats) => {
                         let _ = format_res_tx.send(Ok(formats));
                     }
@@ -345,10 +428,7 @@ impl App {
         use tokio::io::{AsyncBufReadExt, BufReader};
 
         // Spawn a background task to handle download requests and control messages
-        let resolved_download_dir = local::resolve_path(&config.download_directory)
-            .to_string_lossy()
-            .to_string();
-        let settings_clone = settings.clone();
+        let task_settings = shared_settings.clone();
         tokio::spawn(async move {
             // Map video_id to its PID for control (pause/resume/cancel)
             let mut active_downloads_pids: HashMap<String, u32> = HashMap::new();
@@ -360,7 +440,13 @@ impl App {
                         if let Some((video, format_id)) = res {
                             let event_tx = download_event_tx.clone();
                             let video_id = video.id.clone();
-                            let mut child = match crate::sys::download::start_download(&video, &format_id, &resolved_download_dir, &settings_clone).await {
+                            
+                            let current_settings = task_settings.read().unwrap().clone();
+                            let resolved_download_dir = local::resolve_path(&current_settings.download_directory)
+                                .to_string_lossy()
+                                .to_string();
+                                
+                            let mut child = match crate::sys::download::start_download(&video, &format_id, &resolved_download_dir, &current_settings).await {
                                 Ok(child) => child,
                                 Err(e) => {
                                     log::error!("Failed to start download for video {}: {}", video_id, e);
@@ -486,12 +572,13 @@ impl App {
         let (details_tx, mut details_req_rx) = mpsc::unbounded_channel::<Vec<String>>();
         let (details_res_tx, details_rx) = mpsc::unbounded_channel();
 
-        let settings_clone = settings.clone();
+        let task_settings = shared_settings.clone();
         tokio::spawn(async move {
             while let Some(ids) = details_req_rx.recv().await {
                 let res_tx = details_res_tx.clone();
+                let current_settings = task_settings.read().unwrap().clone();
                 if let Err(e) =
-                    yt::resolve_video_details(ids, settings_clone.clone(), res_tx.clone()).await
+                    yt::resolve_video_details(ids, current_settings, res_tx.clone()).await
                 {
                     let _ = res_tx.send(Err(e.to_string()));
                 }
@@ -562,6 +649,7 @@ impl App {
             show_live: config.show_live,
             show_playlists: config.show_playlists,
             settings,
+            shared_settings,
 
             search_results: Vec::new(),
             selected_result_index: None,

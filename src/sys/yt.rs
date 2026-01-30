@@ -33,7 +33,7 @@ pub fn build_base_command(settings: &Settings) -> Command {
             log::info!("Using cookies from browser: {}", browser);
             cmd.arg("--cookies-from-browser").arg(browser);
         }
-        CookieMode::Off => {}
+        CookieMode::Off | CookieMode::Unsetted => {}
     }
 
     if settings.ffmpeg_cmd() != "ffmpeg" {

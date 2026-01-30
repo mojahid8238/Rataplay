@@ -12,6 +12,8 @@ pub struct Settings {
     pub ytdlp_path: String,
     pub ffmpeg_path: String,
     pub deno_path: String,
+    
+    pub download_directory: String,
 
     // Cookie details
     pub cookie_file: Option<PathBuf>,
@@ -22,6 +24,7 @@ pub struct Settings {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CookieMode {
     Off,
+    Unsetted,
     Netscape(PathBuf),
     Json(PathBuf),
     Browser(String),
@@ -37,6 +40,7 @@ impl Default for Settings {
             ytdlp_path: "yt-dlp".to_string(),
             ffmpeg_path: "ffmpeg".to_string(),
             deno_path: "deno".to_string(),
+            download_directory: ".".to_string(),
             cookie_file: None,
             browser_name: None,
             log_path: None,
@@ -49,6 +53,7 @@ impl Settings {
         let mut settings = Self::default();
 
         settings.enable_logging = config.logging.enabled;
+        settings.download_directory = config.download_directory;
 
         // If any paths are provided, we implicitly "use custom paths" for those items,
         // but we still honor the global enabled flag for whether we *save* them as enabled.
@@ -86,7 +91,8 @@ impl Settings {
         } else {
             match &config.cookies.source {
                 CookieSource::Off => {
-                    settings.cookie_mode = CookieMode::Off;
+                    // Enabled but not configured
+                    settings.cookie_mode = CookieMode::Unsetted;
                 }
                 CookieSource::Netscape(path) => {
                     settings.cookie_file = Some(path.clone());

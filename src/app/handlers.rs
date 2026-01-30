@@ -337,6 +337,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                         app.theme = crate::tui::components::theme::AVAILABLE_THEMES[app.theme_index];
                                         app.status_message = Some(format!("Theme: {}", app.theme.name));
                                         app.save_config();
+                                        app.reload_config();
                                     }
                                     crate::tui::components::settings::SettingItem::Animation => {
                                         app.toggle_animation();
@@ -371,10 +372,12 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                     crate::tui::components::settings::SettingItem::EnableLogging => {
                                         app.settings.enable_logging = !app.settings.enable_logging;
                                         
-                                        let config = crate::sys::config::Config::load();
-                                        let log_path = config.get_log_path()
-                                            .map(|p| p.to_string_lossy().to_string())
-                                            .unwrap_or_else(|_| "Unknown".to_string());
+                                        let log_path = match crate::sys::config::Config::load() {
+                                            Ok(config) => config.get_log_path()
+                                                .map(|p| p.to_string_lossy().to_string())
+                                                .unwrap_or_else(|_| "Unknown".to_string()),
+                                            Err(_) => "Unknown".to_string(),
+                                        };
                                         
                                         app.status_message = Some(format!(
                                             "Logging {}. Path: {}", 
@@ -382,30 +385,27 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                             log_path
                                         ));
                                         
-                                        app.save_config(); 
+                                        app.save_config();
+                                        app.reload_config();
                                     }
                                     crate::tui::components::settings::SettingItem::UseCustomPaths => {
                                         app.settings.use_custom_paths = !app.settings.use_custom_paths;
                                         app.save_config();
-                                        app.status_message = Some("Enabled. Change binary paths in config.toml if needed.".to_string());
+                                        app.reload_config();
+                                        app.status_message = Some("Toggled. Change binary paths in config.toml if needed.".to_string());
                                     }
                                     crate::tui::components::settings::SettingItem::CookieMode => {
+                                        // Toggle between Off and Unsetted (enabled but not configured)
+                                        // User should configure source in config.toml
                                         if app.settings.cookie_mode == crate::model::settings::CookieMode::Off {
-                                            // Toggle ON: restore last known source or default
-                                            if let Some(path) = &app.settings.cookie_file {
-                                                // We'll default to Netscape here; specific type changes
-                                                // should be managed in config.toml
-                                                app.settings.cookie_mode = crate::model::settings::CookieMode::Netscape(path.clone());
-                                            } else if let Some(browser) = &app.settings.browser_name {
-                                                app.settings.cookie_mode = crate::model::settings::CookieMode::Browser(browser.clone());
-                                            } else {
-                                                app.settings.cookie_mode = crate::model::settings::CookieMode::Browser("chrome".to_string());
-                                            }
+                                            app.settings.cookie_mode = crate::model::settings::CookieMode::Unsetted;
+                                            app.status_message = Some("Enabled. Configure cookie source in config.toml.".to_string());
                                         } else {
                                             app.settings.cookie_mode = crate::model::settings::CookieMode::Off;
+                                            app.status_message = Some("Disabled.".to_string());
                                         }
                                         app.save_config();
-                                        app.status_message = Some("Enabled. Change cookie settings in config.toml if needed.".to_string());
+                                        app.reload_config();
                                     }
                                 }
                             }
@@ -1032,6 +1032,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                     app.search_limit = n;
                                     app.status_message = Some(format!("Search Limit set to {}", n));
                                     app.save_config();
+                                    app.reload_config();
                                 }
                             }
                             Some(crate::tui::components::settings::SettingItem::PlaylistLimit) => {
@@ -1039,12 +1040,14 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                     app.playlist_limit = n;
                                     app.status_message = Some(format!("Playlist Limit set to {}", n));
                                     app.save_config();
+                                    app.reload_config();
                                 }
                             }
                             Some(crate::tui::components::settings::SettingItem::DownloadDirectory) => {
                                 app.download_directory = val;
                                 app.status_message = Some(format!("Download Directory set to {}", app.download_directory));
                                 app.save_config();
+                                app.reload_config();
                             }
                             _ => {}
                         }
