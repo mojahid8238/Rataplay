@@ -9,6 +9,7 @@ pub struct Video {
     pub id: String,
     pub title: String,
     pub channel: String,
+    pub channel_id: String,
     pub url: String,
     pub duration_string: String, // e.g. "10:05"
     pub thumbnail_url: Option<String>,
@@ -39,6 +40,7 @@ impl Default for Video {
             id: String::new(),
             title: String::new(),
             channel: String::new(),
+            channel_id: String::new(),
             url: String::new(),
             duration_string: String::new(),
             thumbnail_url: None,

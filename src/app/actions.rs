@@ -151,7 +151,7 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
                 ));
                 actions.push(Action::new(
                     KeyCode::Char('c'),
-                    "Copy URL/ID",
+                    "Copy URL/Channel ID",
                     AppAction::CopyUrlOrId,
                 ));
             } else {
@@ -182,7 +182,7 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
                 ));
                 actions.push(Action::new(
                     KeyCode::Char('c'),
-                    "Copy URL/ID",
+                    "Copy URL/Channel ID",
                     AppAction::CopyUrlOrId,
                 ));
 

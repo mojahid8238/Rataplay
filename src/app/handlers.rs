@@ -888,11 +888,11 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                             }
                                             AppAction::CopyUrlOrId => {
                                                 let text_to_copy = if effective_code == KeyCode::Char('i') {
-                                                    video.id.clone()
+                                                    video.channel_id.clone()
                                                 } else {
                                                     video.url.clone()
                                                 };
-                                                let label = if effective_code == KeyCode::Char('i') { "ID" } else { "URL" };
+                                                let label = if effective_code == KeyCode::Char('i') { "Channel ID" } else { "URL" };
 
                                                 if let Some(clipboard) = &mut app.clipboard {
                                                     if clipboard.set_text(text_to_copy).is_ok() {

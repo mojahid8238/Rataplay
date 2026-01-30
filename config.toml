@@ -1,0 +1,64 @@
+# Rataplay Configuration
+
+# The visual style of the application.
+# Available themes: "Default", "Dracula", "Matrix", "Cyberpunk", "Catppuccin"
+theme = "Default"
+
+# The number of results to fetch per search page or "Load More" action.
+search_limit = 20
+
+# The maximum number of videos to load when opening a playlist.
+playlist_limit = 15
+
+# The directory where videos and audio will be downloaded.
+download_directory = "/home/mojahid/Downloads/Rataplay"
+
+# The animation style for the logo.
+# Options: "Wave", "Breathe", "Glitch", "Neon", "Static"
+animation = "Glitch"
+
+# Whether to show live streams in search results.
+show_live = true
+
+# Whether to show playlists in search results.
+show_playlists = true
+
+# --- Advanced Configuration ---
+
+[executables]
+enabled = false
+# Absolute paths to binaries. If commented out, system PATH is used.
+# mpv = "/usr/bin/mpv"
+# ytdlp = "/usr/bin/yt-dlp"
+# ffmpeg = "/usr/bin/ffmpeg"
+# deno = "/usr/bin/deno"
+
+[cookies]
+# This section configures how yt-dlp accesses cookies for protected content (like Watch Later).
+enabled = false
+# 
+# --- How to configure ---
+# 1. Browser: Use cookies from your installed browser.
+# Please keep in mind that you have to install secretstorage to use this feature.
+#    source.type = "browser"
+#    source.value = "chrome"  # Options: chrome, firefox, edge, safari, opera, vivaldi, brave
+# 
+# 2. Netscape: Use a Netscape-formatted cookie file.
+#    source.type = "netscape"
+#    source.value = "/path/to/cookies.txt"
+# 
+# 3. JSON: Use a JSON-formatted cookie file.
+#    source.type = "json"
+#    source.value = "/path/to/cookies.json"
+# ------------------------
+
+# source.type = ""
+# source.value = ""
+
+[logging]
+# Whether to enable application logging.
+enabled = false
+# The default location of log file is:
+# Linux:   ~/.local/state/rataplay/rataplay.log
+# You can set a custom path for the log file.
+# path = "/absolute/path/to/rataplay.log"
