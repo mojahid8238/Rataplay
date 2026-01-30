@@ -302,6 +302,8 @@ impl App {
                 self.show_live = config.show_live;
                 self.show_playlists = config.show_playlists;
 
+                let log_path = config.get_log_path().ok();
+
                 self.settings = crate::model::settings::Settings::from_config(config);
                 
                 // Update shared settings for background tasks
@@ -316,6 +318,11 @@ impl App {
                     log::LevelFilter::Off
                 };
                 log::set_max_level(log_level);
+                
+                // Update log path if it changed
+                if let Some(path) = log_path {
+                    let _ = crate::sys::logging::update_log_path(path);
+                }
                 
                 self.status_message = Some("Configuration reloaded successfully.".to_string());
             }
