@@ -14,6 +14,11 @@
   - **Audio Only**: High-fidelity audio streams for background listening.
 - 📥 **Background Downloads**: Multi-threaded downloads with real-time speed, progress, and ETA tracking.
 - 📂 **Local Management**: Browse, play, and manage your downloaded files directly within the app.
+- 🖱️ **Mouse Support**: Navigate search results, manage downloads, and interact with the UI seamlessly using your mouse.
+- 🛠️ **Custom Execution Paths**: Override default system paths for critical dependencies like `mpv`, `yt-dlp`, `ffmpeg`, and `deno`.
+- 📝 **Logging System**: Robust logging system with configurable file paths and levels for easier debugging.
+- 🍪 **Cookie Integration**: Authenticate with YouTube using browser cookies or exported files (Netscape/JSON) to access restricted content.
+- 🔄 **Hot Reload System**: Configuration changes (themes, paths, logging, etc.) are applied instantly without restarting the app.
 - 🎛️ **Full Playback Control**: Play/Pause, Seek (5s/30s), and Progress tracking via IPC sockets.
 - 🎹 **System Media Controls**: Native support for Play/Pause, Next/Prev, and Stop via system media keys (MPRIS/SMTC).
 - ⚡ **Async Core**: Powered by Tokio for a zero-latency, non-blocking UI.
