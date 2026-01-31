@@ -51,7 +51,6 @@ pub fn play_video(url: &str, format: Option<&str>, in_terminal: bool, user_agent
             .stderr(Stdio::inherit());
     } else {
         // Detached / background
-        cmd.arg("--idle=yes");
         cmd.arg("--force-window=yes");
         cmd.arg("--fs");
 
@@ -99,7 +98,7 @@ pub fn play_audio(url: &str, settings: &Settings) -> Result<Child> {
         format!("/tmp/rataplay-mpv-{}.sock", std::process::id())
     };
     cmd.arg(format!("--input-ipc-server={}", socket_path));
-    cmd.arg("--idle=yes");
+    // cmd.arg("--idle=yes");
 
     // Apply cookies to mpv (passed to ytdl-hook)
     match &settings.cookie_mode {

@@ -625,6 +625,19 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                         actions::seek(app, -5);
                     }
                     KeyCode::Right => {
+                        if let Some(idx) = app.selected_local_file_index {
+                            if let Some(file) = app.local_files.get(idx) {
+                                let path = file.path.to_string_lossy().to_string();
+                                let name = file.name.clone();
+                                actions::stop_playback(app);
+                                app.pending_action = Some((
+                                    crate::app::AppAction::WatchExternal,
+                                    path,
+                                    name
+                                ));
+                                return;
+                            }
+                        }
                         actions::seek(app, 5);
                     }
                     KeyCode::Char('[') => {
@@ -1106,6 +1119,21 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                         actions::seek(app, -5);
                     }
                     KeyCode::Right => {
+                        if let Some(idx) = app.selected_result_index {
+                            if idx < app.search_results.len() {
+                                if let Some(video) = app.search_results.get(idx).cloned() {
+                                    if video.video_type != crate::model::VideoType::Playlist {
+                                        actions::stop_playback(app);
+                                        app.pending_action = Some((
+                                            crate::app::AppAction::WatchExternal,
+                                            format!("{}::best", video.url),
+                                            video.title
+                                        ));
+                                        return;
+                                    }
+                                }
+                            }
+                        }
                         actions::seek(app, 5);
                     }
                     KeyCode::Char('[') => {
