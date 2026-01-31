@@ -91,6 +91,7 @@ pub struct App {
     pub format_tx: UnboundedSender<String>, // URL
     pub format_rx: UnboundedReceiver<Result<Vec<crate::model::VideoFormat>, String>>,
     pub formats: Vec<crate::model::VideoFormat>,
+    pub action_video: Option<Video>,
     pub selected_format_index: Option<usize>,
     pub format_selection_mode: crate::app::state::FormatSelectionMode,
     // Background Download
@@ -649,17 +650,20 @@ impl App {
         let local_files = local::scan_local_files(download_path);
         let mut download_manager = DownloadManager::new();
 
-        // Scan for incomplete downloads to resume
-        let incomplete = local::scan_incomplete_downloads(download_path);
-        for (id, title, url, format_id) in incomplete {
+        // Scan for download tasks (incomplete or finished/recoverable)
+        let scanned_tasks = local::scan_download_tasks(download_path);
+        for (video, format_id, status, path) in scanned_tasks {
+            let id = video.id.clone();
             if !download_manager.tasks.contains_key(&id) {
-                let mut video = Video::default();
-                video.id = id.clone();
-                video.title = title.clone();
-                video.url = url;
-
-                let mut task = crate::model::download::DownloadTask::new(video, format_id);
-                task.status = crate::model::download::DownloadStatus::Canceled; // Set to canceled so it shows up as restorable
+                let mut task = crate::model::download::DownloadTask::new(video.clone(), format_id);
+                task.status = status;
+                task.info_json_path = Some(path);
+                
+                if task.status == crate::model::download::DownloadStatus::Finished {
+                     task.progress = 100.0;
+                     task.total_size = "Cached".to_string(); 
+                }
+                
                 download_manager.tasks.insert(id.clone(), task);
                 download_manager.task_order.push(id);
             }
@@ -729,6 +733,7 @@ impl App {
             format_tx,
             format_rx,
             formats: Vec::new(),
+            action_video: None,
             selected_format_index: None,
             format_selection_mode: crate::app::state::FormatSelectionMode::default(),
             download_manager,

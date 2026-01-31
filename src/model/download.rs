@@ -27,6 +27,7 @@ pub struct DownloadTask {
     pub eta: String,
     pub total_size: String,
     pub pid: Option<u32>,
+    pub info_json_path: Option<std::path::PathBuf>,
 }
 
 impl DownloadTask {
@@ -42,6 +43,7 @@ impl DownloadTask {
             eta: String::new(),
             total_size: String::new(),
             pid: None,
+            info_json_path: None,
         }
     }
 }

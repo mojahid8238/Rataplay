@@ -87,8 +87,8 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
-pub fn scan_incomplete_downloads(dir: &Path) -> Vec<(String, String, String, String)> {
-    let mut incomplete = std::collections::HashMap::new();
+pub fn scan_download_tasks(dir: &Path) -> Vec<(crate::model::Video, String, crate::model::download::DownloadStatus, PathBuf)> {
+    let mut tasks = Vec::new();
     
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
@@ -107,15 +107,76 @@ pub fn scan_incomplete_downloads(dir: &Path) -> Vec<(String, String, String, Str
                         let format_id = json["format_id"].as_str().unwrap_or("best").to_string();
                         
                         if !id.is_empty() && !url.is_empty() {
-                            incomplete.insert(id.clone(), (id, title, url, format_id));
+                            let mut video = crate::model::Video::default();
+                            video.id = id.clone();
+                            video.title = title.clone();
+                            video.url = url.clone();
+                            
+                            let base_path_str = path.to_string_lossy();
+                            let base_path = base_path_str.strip_suffix(".info.json").unwrap_or(&base_path_str);
+                            
+                            let mut status = crate::model::download::DownloadStatus::Finished;
+                            
+                             if let Some(filename) = json["_filename"].as_str() {
+                                 let part_path = PathBuf::from(format!("{}.part", filename));
+                                 if part_path.exists() {
+                                     status = crate::model::download::DownloadStatus::Canceled;
+                                 }
+                             } else {
+                                let extensions = ["mp4", "mkv", "webm", "mp3", "m4a", "opus"];
+                                for ext in extensions {
+                                    let part_path = PathBuf::from(format!("{}.{}.part", base_path, ext));
+                                     if part_path.exists() {
+                                         status = crate::model::download::DownloadStatus::Canceled;
+                                         break;
+                                     }
+                                     let part_path_2 = PathBuf::from(format!("{}.part", base_path));
+                                     if part_path_2.exists() {
+                                          status = crate::model::download::DownloadStatus::Canceled;
+                                          break;
+                                     }
+                                }
+                             }
+                            
+                            tasks.push((video, format_id, status, path.clone()));
                         }
                     }
                 }
             }
         }
     }
+    tasks
+}
+
+pub fn delete_task_files(info_json: &Path) -> Result<()> {
+    if !info_json.exists() {
+        return Ok(());
+    }
+
+    // Capture the base path before deleting the json
+    let base_path_str = info_json.to_string_lossy().to_string();
+    let base_path = base_path_str.strip_suffix(".info.json").unwrap_or(&base_path_str);
     
-    incomplete.into_values().collect()
+    // 1. Delete the info.json
+    let _ = fs::remove_file(info_json);
+    
+    // 2. Try to find and delete the .part file
+    // Heuristic matches what scan_download_tasks uses
+    let extensions = ["mp4", "mkv", "webm", "mp3", "m4a", "opus"];
+    for ext in extensions {
+        let part_path = PathBuf::from(format!("{}.{}.part", base_path, ext));
+        if part_path.exists() {
+            let _ = fs::remove_file(part_path);
+            break;
+        }
+        let part_path_2 = PathBuf::from(format!("{}.part", base_path));
+        if part_path_2.exists() {
+            let _ = fs::remove_file(part_path_2);
+            break;
+        }
+    }
+
+    Ok(())
 }
 
 pub fn delete_file(path: &Path) -> Result<()> {
@@ -131,7 +192,8 @@ pub fn cleanup_garbage(dir: &Path) -> Result<usize> {
             let path = entry.path();
             if path.is_file() {
                 let name = path.file_name().unwrap_or_default().to_string_lossy();
-                if name.ends_with(".part") || name.ends_with(".ytdl") || name.ends_with(".tmp") || name.ends_with(".info.json") {
+                // We keep .info.json now as it represents persistent metadata
+                if name.ends_with(".part") || name.ends_with(".ytdl") || name.ends_with(".tmp") {
                     if fs::remove_file(path).is_ok() {
                         count += 1;
                     }

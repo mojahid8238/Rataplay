@@ -153,8 +153,12 @@ pub fn on_tick(app: &mut App) {
                 }
             }
             DownloadEvent::Finished(id) => {
-                app.download_manager.tasks.remove(&id);
-                app.download_manager.task_order.retain(|x| x != &id);
+                if let Some(task) = app.download_manager.tasks.get_mut(&id) {
+                    task.status = crate::model::download::DownloadStatus::Finished;
+                    task.progress = 100.0;
+                    task.speed = String::new();
+                    task.eta = String::new();
+                }
                 app.selected_download_indices.clear();
                 app.selected_download_index = None;
                 actions::refresh_local_files(app);

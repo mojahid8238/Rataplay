@@ -454,40 +454,52 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                         };
 
                         if let Some(format_id) = selected_format_id {
-                            match app.format_selection_mode {
-                                crate::app::state::FormatSelectionMode::Download => {
-                                    if let Some(res_idx) = app.selected_result_index {
-                                        if let Some(video) = app.search_results.get(res_idx) {
-                                            // Add to manager and start download
-                                            app.download_manager.add_task(video, &format_id);
-                                            let _ = app
-                                                .new_download_tx
-                                                .send((video.clone(), format_id));
-                                            app.state = AppState::Results;
-                                            app.status_message =
-                                                Some("Download started...".to_string());
-                                            return;
+                            if let Some(video) = app.action_video.clone() {
+                                match app.format_selection_mode {
+                                    crate::app::state::FormatSelectionMode::Download => {
+                                        // Add to manager and start download
+                                        app.download_manager.add_task(&video, &format_id);
+                                        let _ = app
+                                            .new_download_tx
+                                            .send((video.clone(), format_id));
+                                        
+                                        if app.previous_app_state == AppState::Downloads {
+                                             app.state = AppState::Downloads;
+                                        } else {
+                                             app.state = AppState::Results;
                                         }
+                                        app.status_message =
+                                            Some("Download started...".to_string());
+                                        app.action_video = None;
+                                        return;
                                     }
-                                }
-                                crate::app::state::FormatSelectionMode::Watch => {
-                                    if let Some(res_idx) = app.selected_result_index {
-                                        if let Some(video) = app.search_results.get(res_idx) {
-                                            let url = video.url.clone();
-                                            let title = video.title.clone();
-                                            
-                                            actions::stop_playback(app);
-                                            
-                                            let stored_url = format!("{}::{}", url, format_id);
-                                            app.pending_action = Some((AppAction::WatchExternal, stored_url, title));
-                                            app.state = AppState::Results;
-                                            return;
+                                    crate::app::state::FormatSelectionMode::Watch => {
+                                        let url = video.url.clone();
+                                        let title = video.title.clone();
+                                        
+                                        actions::stop_playback(app);
+                                        
+                                        let stored_url = format!("{}::{}", url, format_id);
+                                        app.pending_action = Some((AppAction::WatchExternal, stored_url, title));
+                                        
+                                        if app.previous_app_state == AppState::Downloads {
+                                             app.state = AppState::Downloads;
+                                        } else {
+                                             app.state = AppState::Results;
                                         }
+                                        app.action_video = None;
+                                        return;
                                     }
                                 }
                             }
                         }
-                        app.state = AppState::Results; 
+                        
+                        // Fallback if video lost or format aborted
+                        if app.previous_app_state == AppState::Downloads {
+                             app.state = AppState::Downloads;
+                        } else {
+                             app.state = AppState::Results; 
+                        }
                     }
                     _ => {}
                 },
@@ -775,8 +787,23 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                             }
                             AppAction::CancelDownload => {
                                  if let Some(idx) = app.selected_download_index {
-                                     if let Some(task_id) = app.download_manager.task_order.get(idx) {
-                                         let _ = app.download_control_tx.send(DownloadControl::Cancel(task_id.clone()));
+                                     if let Some(task_id) = app.download_manager.task_order.get(idx).cloned() {
+                                         let (is_active, json_path) = if let Some(task) = app.download_manager.tasks.get(&task_id) {
+                                             (matches!(task.status, crate::model::download::DownloadStatus::Downloading | crate::model::download::DownloadStatus::Pending | crate::model::download::DownloadStatus::Paused), task.info_json_path.clone())
+                                         } else { (false, None) };
+
+                                         if is_active {
+                                             let _ = app.download_control_tx.send(DownloadControl::Cancel(task_id));
+                                         } else {
+                                             // Delete files (json + part)
+                                             if let Some(path) = json_path {
+                                                 let _ = crate::sys::local::delete_task_files(&path);
+                                             }
+                                             // Remove from memory
+                                             app.download_manager.tasks.remove(&task_id);
+                                             app.download_manager.task_order.retain(|id| id != &task_id);
+                                             app.selected_download_index = None;
+                                         }
                                      }
                                  }
                                  app.state = app.previous_app_state;
@@ -784,11 +811,24 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                             AppAction::CancelSelectedDownloads => {
                                  let indices: Vec<usize> = app.selected_download_indices.iter().cloned().collect();
                                  for idx in indices {
-                                     if let Some(task_id) = app.download_manager.task_order.get(idx) {
-                                         let _ = app.download_control_tx.send(DownloadControl::Cancel(task_id.clone()));
+                                     if let Some(task_id) = app.download_manager.task_order.get(idx).cloned() {
+                                         let (is_active, json_path) = if let Some(task) = app.download_manager.tasks.get(&task_id) {
+                                             (matches!(task.status, crate::model::download::DownloadStatus::Downloading | crate::model::download::DownloadStatus::Pending | crate::model::download::DownloadStatus::Paused), task.info_json_path.clone())
+                                         } else { (false, None) };
+
+                                         if is_active {
+                                             let _ = app.download_control_tx.send(DownloadControl::Cancel(task_id));
+                                         } else {
+                                             if let Some(path) = json_path {
+                                                 let _ = crate::sys::local::delete_task_files(&path);
+                                             }
+                                             app.download_manager.tasks.remove(&task_id);
+                                             app.download_manager.task_order.retain(|id| id != &task_id);
+                                         }
                                      }
                                  }
                                  app.selected_download_indices.clear();
+                                 app.selected_download_index = None;
                                  app.state = app.previous_app_state;
                             }
                             AppAction::CleanupLocalGarbage => {
@@ -797,13 +837,6 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                 match local::cleanup_garbage(download_path) {
                                     Ok(count) => {
                                         app.status_message = Some(format!("Cleaned {} garbage files.", count));
-                                        
-                                        // Clear tasks that are not actively downloading/paused
-                                        // or just clear the whole list as requested to "continue" fresh
-                                        app.download_manager.tasks.clear();
-                                        app.download_manager.task_order.clear();
-                                        app.selected_download_index = None;
-                                        app.selected_download_indices.clear();
                                         
                                         actions::refresh_local_files(app);
                                     }
@@ -814,8 +847,26 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                 app.state = app.previous_app_state;
                             }
                             _ => {
-                                 if let Some(idx) = app.selected_result_index {
-                                    if let Some(video) = app.search_results.get(idx) {
+                                  let effective_state = if app.state == AppState::ActionMenu {
+                                      app.previous_app_state
+                                  } else {
+                                      app.state
+                                  };
+
+                                  let target_video = if effective_state == AppState::Downloads {
+                                      if let Some(idx) = app.selected_download_index {
+                                          if let Some(task_id) = app.download_manager.task_order.get(idx) {
+                                              app.download_manager.tasks.get(task_id).map(|t| t.video.clone())
+                                          } else { None }
+                                      } else { None }
+                                  } else {
+                                      if let Some(idx) = app.selected_result_index {
+                                          app.search_results.get(idx).cloned()
+                                      } else { None }
+                                  };
+
+                                  if let Some(video) = target_video {
+                                        app.action_video = Some(video.clone());
                                         let url = video.url.clone();
                                         let title = video.title.clone();
                                         match action.action {
@@ -971,7 +1022,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                             }
                                         }
                                     }
-                                }
+
                             }
                         }
                     }

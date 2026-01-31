@@ -74,12 +74,22 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
                                 "Pause Download",
                                 AppAction::ResumeDownload, 
                             ));
+                            actions.push(Action::new(
+                                KeyCode::Char('x'),
+                                "Cancel Download",
+                                AppAction::CancelDownload,
+                            ));
                         }
                         crate::model::download::DownloadStatus::Paused => {
                             actions.push(Action::new(
                                 KeyCode::Char('p'),
                                 "Resume Download",
                                 AppAction::ResumeDownload,
+                            ));
+                            actions.push(Action::new(
+                                KeyCode::Char('x'),
+                                "Cancel Download",
+                                AppAction::CancelDownload,
                             ));
                         }
                         crate::model::download::DownloadStatus::Canceled | crate::model::download::DownloadStatus::Error(_) => {
@@ -88,30 +98,71 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
                                 "Restart Download",
                                 AppAction::ResumeDownload,
                             ));
+                            actions.push(Action::new(
+                                KeyCode::Char('d'),
+                                "Select Format & Download",
+                                AppAction::Download,
+                            ));
+                            if app.selected_download_indices.is_empty() {
+                                 actions.push(Action::new(
+                                    KeyCode::Char('x'),
+                                    "Remove from List",
+                                    AppAction::CancelDownload,
+                                ));
+                            }
                         }
-                        _ => {} 
+                        crate::model::download::DownloadStatus::Finished => {
+                            actions.push(Action::new(
+                                KeyCode::Char('d'),
+                                "Select Format & Redownload",
+                                AppAction::Download,
+                            ));
+                            if app.selected_download_indices.is_empty() {
+                                 actions.push(Action::new(
+                                    KeyCode::Char('x'),
+                                    "Remove from List",
+                                    AppAction::CancelDownload,
+                                ));
+                            }
+                        }
                     }
                 }
             }
-
-             actions.push(Action::new(
-                KeyCode::Char('x'),
-                "Cancel Download",
-                AppAction::CancelDownload,
-            ));
         }
 
         if !app.selected_download_indices.is_empty() {
-             actions.push(Action::new(
-                KeyCode::Char('P'),
-                "Resume/Restart Selected",
-                AppAction::ResumeSelectedDownloads,
-            ));
-             actions.push(Action::new(
-                KeyCode::Char('X'),
-                "Cancel Selected Downloads",
-                AppAction::CancelSelectedDownloads,
-            ));
+             let selected_tasks: Vec<&crate::model::download::DownloadTask> = app.selected_download_indices.iter()
+                 .filter_map(|&idx| app.download_manager.task_order.get(idx))
+                 .filter_map(|id| app.download_manager.tasks.get(id))
+                 .collect();
+
+             let all_inactive = selected_tasks.iter().all(|t| matches!(t.status, crate::model::download::DownloadStatus::Finished | crate::model::download::DownloadStatus::Canceled | crate::model::download::DownloadStatus::Error(_)));
+             let all_resumable = selected_tasks.iter().all(|t| matches!(t.status, crate::model::download::DownloadStatus::Paused | crate::model::download::DownloadStatus::Canceled | crate::model::download::DownloadStatus::Error(_)));
+             let any_active = selected_tasks.iter().any(|t| matches!(t.status, crate::model::download::DownloadStatus::Downloading | crate::model::download::DownloadStatus::Pending | crate::model::download::DownloadStatus::Paused));
+
+             if all_resumable && !selected_tasks.is_empty() {
+                 actions.push(Action::new(
+                    KeyCode::Char('P'),
+                    "Resume/Restart Selected",
+                    AppAction::ResumeSelectedDownloads,
+                ));
+             }
+
+             if any_active {
+                 actions.push(Action::new(
+                    KeyCode::Char('X'),
+                    "Cancel Selected Downloads",
+                    AppAction::CancelSelectedDownloads,
+                ));
+             }
+             
+             if all_inactive && !selected_tasks.is_empty() {
+                  actions.push(Action::new(
+                    KeyCode::Char('x'),
+                    "Remove Selected from List",
+                    AppAction::CancelSelectedDownloads,
+                ));
+             }
         }
 
          if !app.selected_local_file_indices.is_empty() {
