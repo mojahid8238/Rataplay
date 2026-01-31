@@ -9,9 +9,13 @@ fn is_audio_path(path: &str) -> bool {
     audio_exts.iter().any(|ext| path_lower.ends_with(ext))
 }
 
-pub fn play_video(url: &str, in_terminal: bool, user_agent: Option<&str>, settings: &Settings) -> Result<Child> {
+pub fn play_video(url: &str, format: Option<&str>, in_terminal: bool, user_agent: Option<&str>, settings: &Settings) -> Result<Child> {
     let mut cmd = Command::new(settings.mpv_cmd());
     cmd.kill_on_drop(true);
+
+    if let Some(fmt) = format {
+        cmd.arg(format!("--ytdl-format={}", fmt));
+    }
 
     if let Some(ua) = user_agent {
         cmd.arg(format!("--user-agent={}", ua));

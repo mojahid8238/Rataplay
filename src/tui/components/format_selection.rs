@@ -13,7 +13,8 @@ pub fn render_format_selection(
     app: &mut App,
     area: Rect,
 ) {
-    let area = centered_rect(40, 30, area);
+    let width_percent = if app.format_selection_mode == crate::app::state::FormatSelectionMode::Download { 40 } else { 20 };
+    let area = centered_rect(width_percent, 30, area);
     app.format_selection_area = Some(area);
     f.render_widget(ratatui::widgets::Clear, area);
 
@@ -31,11 +32,13 @@ pub fn render_format_selection(
         .fg(app.theme.accent)
         .add_modifier(Modifier::BOLD);
 
-    let header = Row::new(vec![
-        Cell::from(" QUALITY"),
-        Cell::from(" FORMAT"),
-        Cell::from(" SIZE"),
-    ])
+    let mut header_cells = vec![Cell::from(" QUALITY")];
+    if app.format_selection_mode == crate::app::state::FormatSelectionMode::Download {
+        header_cells.push(Cell::from(" FORMAT"));
+        header_cells.push(Cell::from(" SIZE"));
+    }
+
+    let header = Row::new(header_cells)
     .style(header_style)
     .height(1)
     .bottom_margin(1);
@@ -62,35 +65,47 @@ pub fn render_format_selection(
                 }
             };
 
-            let size = fmt
-                .filesize
-                .map(|s| {
-                    let mb = s as f64 / 1024.0 / 1024.0;
-                    if mb >= 1024.0 {
-                        format!("{:.1} GB", mb / 1024.0)
-                    } else {
-                        format!("{:.1} MB", mb)
-                    }
-                })
-                .unwrap_or_else(|| "N/A".to_string());
-
-            Row::new(vec![
+            let mut cells = vec![
                 Cell::from(format!(" {}", quality)),
-                Cell::from(fmt.ext.clone()),
-                Cell::from(size),
-            ])
+            ];
+
+            if app.format_selection_mode == crate::app::state::FormatSelectionMode::Download {
+                 cells.push(Cell::from(fmt.ext.clone()));
+                 let size = fmt
+                    .filesize
+                    .map(|s| {
+                        let mb = s as f64 / 1024.0 / 1024.0;
+                        if mb >= 1024.0 {
+                            format!("{:.1} GB", mb / 1024.0)
+                        } else {
+                            format!("{:.1} MB", mb)
+                        }
+                    })
+                    .unwrap_or_else(|| "N/A".to_string());
+                cells.push(Cell::from(size));
+            }
+
+            Row::new(cells)
             .style(Style::default().fg(app.theme.fg))
             .height(1)
         })
         .collect();
 
+    let constraints = if app.format_selection_mode == crate::app::state::FormatSelectionMode::Download {
+        vec![
+            Constraint::Percentage(40),
+            Constraint::Percentage(30),
+            Constraint::Percentage(30),
+        ]
+    } else {
+        vec![
+            Constraint::Percentage(100),
+        ]
+    };
+
     let table = Table::new(
         rows,
-        [
-            Constraint::Percentage(50),
-            Constraint::Percentage(25),
-            Constraint::Percentage(25),
-        ],
+        constraints,
     )
     .header(header)
     .block(block)

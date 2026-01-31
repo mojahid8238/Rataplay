@@ -10,6 +10,13 @@ pub enum InputMode {
     Loading, 
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
+pub enum FormatSelectionMode {
+    #[default]
+    Download,
+    Watch,
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum AppAction {
     WatchExternal,

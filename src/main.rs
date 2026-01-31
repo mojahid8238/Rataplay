@@ -263,7 +263,14 @@ async fn main() -> Result<()> {
 
                 match action {
                     AppAction::WatchExternal => {
-                        match sys::process::play_video(&full_url.to_string(), false, None, &settings) {
+                        let (final_url, format_id) = if full_url.contains("::") {
+                            let parts: Vec<&str> = full_url.splitn(2, "::").collect();
+                            (parts[0].to_string(), Some(parts[1].to_string()))
+                        } else {
+                            (full_url.to_string(), None)
+                        };
+
+                        match sys::process::play_video(&final_url, format_id.as_deref(), false, None, &settings) {
                             Ok(child) => {
                                 let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                                 let (res_tx, res_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -340,7 +347,7 @@ async fn main() -> Result<()> {
                     (url.as_str(), None)
                 };
 
-                if let Ok(mut child) = sys::process::play_video(final_url, true, ua, &settings) {
+                if let Ok(mut child) = sys::process::play_video(final_url, None, true, ua, &settings) {
                     // Update media controller
                     if let Some(mc) = &mut app.media_controller {
                         let _ = mc.set_metadata("Terminal Playback", None, None);

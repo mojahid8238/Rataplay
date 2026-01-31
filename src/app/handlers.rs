@@ -432,19 +432,57 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                         }
                     }
                     KeyCode::Enter => {
-                        if let Some(idx) = app.selected_format_index {
+                        let selected_format_id = if let Some(idx) = app.selected_format_index {
                             if let Some(fmt) = app.formats.get(idx) {
-                                if let Some(res_idx) = app.selected_result_index {
-                                    if let Some(video) = app.search_results.get(res_idx) {
-                                        // Add to manager and start download
-                                        app.download_manager.add_task(video, &fmt.format_id);
-                                        let _ = app
-                                            .new_download_tx
-                                            .send((video.clone(), fmt.format_id.clone()));
-                                        app.state = AppState::Results;
-                                        app.status_message =
-                                            Some("Download started...".to_string());
-                                        return;
+                                // Construct format string for mpv --ytdl-format
+                                // Logic:
+                                // 1. If format has no audio, we MUST merge with bestaudio.
+                                // 2. We append "/best" as a fallback if the specific format fails.
+                                
+                                let format_expr = if !fmt.has_audio {
+                                    format!("{}+bestaudio/best", fmt.format_id)
+                                } else {
+                                    format!("{}/best", fmt.format_id)
+                                };
+                                
+                                Some(format_expr)
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        };
+
+                        if let Some(format_id) = selected_format_id {
+                            match app.format_selection_mode {
+                                crate::app::state::FormatSelectionMode::Download => {
+                                    if let Some(res_idx) = app.selected_result_index {
+                                        if let Some(video) = app.search_results.get(res_idx) {
+                                            // Add to manager and start download
+                                            app.download_manager.add_task(video, &format_id);
+                                            let _ = app
+                                                .new_download_tx
+                                                .send((video.clone(), format_id));
+                                            app.state = AppState::Results;
+                                            app.status_message =
+                                                Some("Download started...".to_string());
+                                            return;
+                                        }
+                                    }
+                                }
+                                crate::app::state::FormatSelectionMode::Watch => {
+                                    if let Some(res_idx) = app.selected_result_index {
+                                        if let Some(video) = app.search_results.get(res_idx) {
+                                            let url = video.url.clone();
+                                            let title = video.title.clone();
+                                            
+                                            actions::stop_playback(app);
+                                            
+                                            let stored_url = format!("{}::{}", url, format_id);
+                                            app.pending_action = Some((AppAction::WatchExternal, stored_url, title));
+                                            app.state = AppState::Results;
+                                            return;
+                                        }
                                     }
                                 }
                             }
@@ -838,6 +876,15 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                                 app.input_mode = InputMode::Loading;
                                                 app.status_message =
                                                     Some("Fetching formats...".to_string());
+                                                app.format_selection_mode = crate::app::state::FormatSelectionMode::Download;
+                                            }
+                                            AppAction::WatchExternal => {
+                                                // Start Format Selection instead of direct play
+                                                let _ = app.format_tx.send(url);
+                                                app.input_mode = InputMode::Loading;
+                                                app.status_message = Some("Fetching formats...".to_string());
+                                                app.format_selection_mode = crate::app::state::FormatSelectionMode::Watch;
+                                                // state transition will happen in updates.rs when formats arrive
                                             }
                                             AppAction::WatchInTerminal => {
                                                 actions::stop_playback(app);
@@ -845,7 +892,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                                 app.state = app.previous_app_state;
                                             }
                                             AppAction::DownloadSelected => {
-                                                 let selected_videos: Vec<Video> = app
+                                                let selected_videos: Vec<Video> = app
                                                     .selected_playlist_indices
                                                     .iter()
                                                     .filter_map(|&idx| app.search_results.get(idx).cloned())

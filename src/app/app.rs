@@ -92,6 +92,7 @@ pub struct App {
     pub format_rx: UnboundedReceiver<Result<Vec<crate::model::VideoFormat>, String>>,
     pub formats: Vec<crate::model::VideoFormat>,
     pub selected_format_index: Option<usize>,
+    pub format_selection_mode: crate::app::state::FormatSelectionMode,
     // Background Download
     pub download_manager: DownloadManager,
     pub new_download_tx: UnboundedSender<(Video, String)>, // Video, FormatID
@@ -729,6 +730,7 @@ impl App {
             format_rx,
             formats: Vec::new(),
             selected_format_index: None,
+            format_selection_mode: crate::app::state::FormatSelectionMode::default(),
             download_manager,
             new_download_tx,
             download_event_rx,

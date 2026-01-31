@@ -576,6 +576,8 @@ pub async fn get_video_formats(url: &str, settings: &Settings) -> Result<Vec<Vid
                 resolution,
                 note: format_note,
                 filesize,
+                has_audio: acodec != "none",
+                has_video: vcodec != "none",
             });
         }
     }

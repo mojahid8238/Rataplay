@@ -73,4 +73,8 @@ pub struct VideoFormat {
     pub resolution: String, // e.g. "1920x1080"
     pub note: String,       // e.g. "video only" or "video+audio"
     pub filesize: Option<u64>,
+    #[serde(default)]
+    pub has_audio: bool,
+    #[serde(default)]
+    pub has_video: bool,
 }
