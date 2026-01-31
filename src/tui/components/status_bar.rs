@@ -6,7 +6,7 @@ use ratatui::{
 
 use crate::app::{App, AppState, InputMode};
 
-pub fn render_status_bar(f: &mut ratatui::Frame, app: &App, area: Rect) {
+pub fn render_status_bar(f: &mut ratatui::Frame, app: &App, area: Rect, has_downloads: bool) {
     let mode_str = match app.input_mode {
         InputMode::Normal => "NORMAL",
         InputMode::Editing => "EDITING",
@@ -49,10 +49,15 @@ pub fn render_status_bar(f: &mut ratatui::Frame, app: &App, area: Rect) {
         format!(" [{}] {} | {} ", mode_str, key_hints, status_msg)
     };
 
+    let mut borders = Borders::ALL;
+    if has_downloads {
+        borders.remove(Borders::TOP);
+    }
+
     let p = Paragraph::new(text)
         .block(
             Block::default()
-                .borders(Borders::ALL)
+                .borders(borders)
                 .border_type(BorderType::Rounded)
                 .border_style(Style::default().fg(app.theme.border)),
         )

@@ -3,7 +3,8 @@ use crate::model::download::DownloadStatus;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Modifier, Style},
+    style::{Modifier, Style, Color},
+    text::{Line, Span},
     widgets::*,
 };
 use ratatui_image::picker::Picker;
@@ -28,6 +29,10 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
         constraints.push(Constraint::Length(3)); // Playback Bar
     }
 
+    if app.terminal_loading {
+        constraints.push(Constraint::Length(3)); // Terminal Loading Bar
+    }
+
     // Global Download Progress (Combined)
     let (active_download_count, avg_progress) = {
         let tasks: Vec<_> = app.download_manager.tasks.values()
@@ -43,14 +48,11 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
     };
     
     if active_download_count > 0 {
-        constraints.push(Constraint::Length(1));
+        constraints.push(Constraint::Length(1)); // Thin progress line
+        constraints.push(Constraint::Length(2)); // Status Bar (no top border)
+    } else {
+        constraints.push(Constraint::Length(3)); // Status Bar (all borders)
     }
-
-    if app.terminal_loading {
-        constraints.push(Constraint::Length(3)); // Terminal Loading Bar
-    }
-
-    constraints.push(Constraint::Length(3)); // Status Bar
 
     let main_layout = Layout::default()
         .direction(ratatui::layout::Direction::Vertical)
@@ -100,36 +102,29 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
         app.playback_bar_area = None;
     }
 
-    // Render Global Download Progress
-    if active_download_count > 0 {
-        let clamped_progress = avg_progress.clamp(0.0, 100.0);
-        let label = format!(" Downloading {} items: {:.1}% ", active_download_count, clamped_progress);
-        let gauge = Gauge::default()
-            .gauge_style(Style::default().fg(app.theme.accent).bg(app.theme.bg))
-            .label(label)
-            .ratio(clamped_progress / 100.0)
-            .use_unicode(true);
-        
-        let gauge_layout = Layout::default()
-            .direction(ratatui::layout::Direction::Horizontal)
-            .constraints([
-                Constraint::Percentage(15),
-                Constraint::Percentage(70),
-                Constraint::Percentage(15),
-            ])
-            .split(main_layout[current_idx]);
-
-        f.render_widget(gauge, gauge_layout[1]);
-        current_idx += 1;
-    }
-
     if app.terminal_loading {
         let status = if app.terminal_loading_error.is_some() { "ERROR" } else { "Loading for Terminal..." };
         render_download_gauge(f, app, app.terminal_loading_progress, status, main_layout[current_idx]);
         current_idx += 1;
     }
 
-    status_bar::render_status_bar(f, app, main_layout[current_idx]);
+    // Render Global Download Progress
+    if active_download_count > 0 {
+        let clamped_progress = avg_progress.clamp(0.0, 100.0);
+        let width = main_layout[current_idx].width as usize;
+        let filled_width = (width as f64 * clamped_progress / 100.0).round() as usize;
+        let empty_width = width.saturating_sub(filled_width);
+
+        let progress_line = Line::from(vec![
+            Span::styled("━".repeat(filled_width), Style::default().fg(app.theme.accent)),
+            Span::styled("━".repeat(empty_width), Style::default().fg(Color::DarkGray)),
+        ]);
+        
+        f.render_widget(Paragraph::new(progress_line), main_layout[current_idx]);
+        current_idx += 1;
+    }
+
+    status_bar::render_status_bar(f, app, main_layout[current_idx], active_download_count > 0);
 
     if app.state == AppState::ActionMenu {
         app.action_menu_area = Some(main_layout[1]);

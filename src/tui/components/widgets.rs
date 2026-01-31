@@ -76,18 +76,17 @@ pub fn truncate_str(s: &str, max_width: usize) -> String {
     result
 }
 
-pub fn create_progress_bar_string(progress: f64, width: u16, fg_color: Color, bg_color: Color, text_color: Color) -> Line<'static> {
-    let bar_width = width.saturating_sub(6); 
+pub fn create_progress_bar_string(progress: f64, width: u16, fg_color: Color, bg_color: Color) -> Line<'static> {
+    let bar_width = width as usize;
     if bar_width == 0 {
-        return Line::from(vec![Span::raw(format!("{:.1}%", progress))]);
+        return Line::from("");
     }
 
-    let filled_chars = (bar_width as f64 * progress / 100.0).round() as u16;
+    let filled_chars = (bar_width as f64 * progress / 100.0).round() as usize;
     let empty_chars = bar_width.saturating_sub(filled_chars);
 
-    let filled_part = Span::styled("█".repeat(filled_chars as usize), Style::default().fg(fg_color));
-    let empty_part = Span::styled(" ".repeat(empty_chars as usize), Style::default().bg(bg_color));
-    let percent_text = Span::styled(format!("{:.1}%", progress), Style::default().fg(text_color));
+    let filled_part = Span::styled("━".repeat(filled_chars), Style::default().fg(fg_color));
+    let empty_part = Span::styled("━".repeat(empty_chars), Style::default().fg(bg_color));
 
-    Line::from(vec![filled_part, empty_part, Span::raw(" "), percent_text])
+    Line::from(vec![filled_part, empty_part])
 }
