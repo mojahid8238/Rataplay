@@ -60,6 +60,7 @@ pub struct App {
     pub animation_mode: AnimationMode,
     pub show_live: bool,
     pub show_playlists: bool,
+    pub progress_style: String,
     pub settings: Settings,
     pub shared_settings: Arc<RwLock<Settings>>,
     pub abort_handles: Vec<tokio::task::AbortHandle>,
@@ -202,6 +203,7 @@ impl App {
             animation: self.animation_mode,
             show_live: self.show_live,
             show_playlists: self.show_playlists,
+            progress_style: self.progress_style.clone(),
             executables: crate::sys::config::Executables {
                 enabled: self.settings.use_custom_paths,
                 // Always preserve the paths from Settings, regardless of enabled state
@@ -303,6 +305,7 @@ impl App {
                 self.animation_mode = config.animation;
                 self.show_live = config.show_live;
                 self.show_playlists = config.show_playlists;
+                self.progress_style = config.progress_style.clone();
 
                 let log_path = config.get_log_path().ok();
 
@@ -710,6 +713,7 @@ impl App {
             animation_mode: config.animation,
             show_live: config.show_live,
             show_playlists: config.show_playlists,
+            progress_style: config.progress_style,
             settings,
             shared_settings,
             abort_handles,

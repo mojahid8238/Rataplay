@@ -357,11 +357,13 @@ pub fn load_more(app: &mut App) {
 }
 
 pub fn handle_paste(app: &mut App, text: String) {
-    if app.input_mode == InputMode::Editing {
-        app.search_query.insert_str(app.cursor_position, &text);
-        app.cursor_position += text.len();
+    if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+        app.settings_input.insert_str(app.settings_cursor_position, &text);
+        app.settings_cursor_position += text.len();
     } else {
-        app.input_mode = InputMode::Editing;
+        if app.input_mode != InputMode::Editing {
+            app.input_mode = InputMode::Editing;
+        }
         app.search_query.insert_str(app.cursor_position, &text);
         app.cursor_position += text.len();
     }

@@ -407,6 +407,13 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                         app.save_config();
                                         app.reload_config();
                                     }
+                                    crate::tui::components::settings::SettingItem::ProgressStyle => {
+                                        app.input_mode = InputMode::Editing;
+                                        app.settings_editing_item = Some(*item);
+                                        app.settings_input = app.progress_style.clone();
+                                        app.settings_cursor_position = app.settings_input.len();
+                                        app.status_message = Some("Enter new Progress Style: ".to_string());
+                                    }
                                 }
                             }
                         }
@@ -440,9 +447,9 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                 // 2. We append "/best" as a fallback if the specific format fails.
                                 
                                 let format_expr = if !fmt.has_audio {
-                                    format!("{}+bestaudio/best", fmt.format_id)
+                                    format!("{}+bestaudio/bestvideo+bestaudio/best", fmt.format_id)
                                 } else {
-                                    format!("{}/best", fmt.format_id)
+                                    format!("{}/bestvideo+bestaudio/best", fmt.format_id)
                                 };
                                 
                                 Some(format_expr)
@@ -1034,6 +1041,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                                 app.state = app.previous_app_state;
                                             }
                                         }
+
                                     }
 
                             }
@@ -1175,6 +1183,12 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                 app.save_config();
                                 app.reload_config();
                             }
+                            Some(crate::tui::components::settings::SettingItem::ProgressStyle) => {
+                                app.progress_style = val;
+                                app.status_message = Some(format!("Progress Style set to \"{}\"", app.progress_style));
+                                app.save_config();
+                                app.reload_config();
+                            }
                             _ => {}
                         }
                         app.settings_input.clear();
@@ -1226,10 +1240,10 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                     } else {
                         if app.state == AppState::Settings && app.settings_editing_item.is_some() {
                             app.settings_input.insert(app.settings_cursor_position, c);
-                            app.settings_cursor_position += 1;
+                            app.settings_cursor_position += c.len_utf8();
                         } else {
                             app.search_query.insert(app.cursor_position, c);
-                            app.cursor_position += 1;
+                            app.cursor_position += c.len_utf8();
                         }
                     }
                 }
@@ -1239,12 +1253,23 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                     } else {
                         if app.state == AppState::Settings && app.settings_editing_item.is_some() {
                             if app.settings_cursor_position > 0 {
-                                app.settings_input.remove(app.settings_cursor_position - 1);
-                                app.settings_cursor_position -= 1;
+                                // Find the start of the previous char
+                                let mut prev_char_idx = 0;
+                                for (idx, _) in app.settings_input.char_indices() {
+                                    if idx >= app.settings_cursor_position { break; }
+                                    prev_char_idx = idx;
+                                }
+                                app.settings_input.remove(prev_char_idx);
+                                app.settings_cursor_position = prev_char_idx;
                             }
                         } else if app.cursor_position > 0 {
-                            app.search_query.remove(app.cursor_position - 1);
-                            app.cursor_position -= 1;
+                            let mut prev_char_idx = 0;
+                            for (idx, _) in app.search_query.char_indices() {
+                                if idx >= app.cursor_position { break; }
+                                prev_char_idx = idx;
+                            }
+                            app.search_query.remove(prev_char_idx);
+                            app.cursor_position = prev_char_idx;
                         }
                     }
                 }
@@ -1260,19 +1285,33 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                 KeyCode::Left => {
                     if app.state == AppState::Settings && app.settings_editing_item.is_some() {
                         if app.settings_cursor_position > 0 {
-                            app.settings_cursor_position -= 1;
+                             let mut prev_char_idx = 0;
+                             for (idx, _) in app.settings_input.char_indices() {
+                                 if idx >= app.settings_cursor_position { break; }
+                                 prev_char_idx = idx;
+                             }
+                             app.settings_cursor_position = prev_char_idx;
                         }
                     } else if app.cursor_position > 0 {
-                        app.cursor_position -= 1;
+                         let mut prev_char_idx = 0;
+                         for (idx, _) in app.search_query.char_indices() {
+                             if idx >= app.cursor_position { break; }
+                             prev_char_idx = idx;
+                         }
+                         app.cursor_position = prev_char_idx;
                     }
                 }
                 KeyCode::Right => {
                     if app.state == AppState::Settings && app.settings_editing_item.is_some() {
                         if app.settings_cursor_position < app.settings_input.len() {
-                            app.settings_cursor_position += 1;
+                             if let Some((_idx, c)) = app.settings_input[app.settings_cursor_position..].char_indices().next() {
+                                 app.settings_cursor_position += c.len_utf8();
+                             }
                         }
                     } else if app.cursor_position < app.search_query.len() {
-                        app.cursor_position += 1;
+                         if let Some((_idx, c)) = app.search_query[app.cursor_position..].char_indices().next() {
+                             app.cursor_position += c.len_utf8();
+                         }
                     }
                 }
                 KeyCode::Home => {

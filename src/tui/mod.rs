@@ -18,6 +18,7 @@ use components::action_menu;
 use components::format_selection;
 use components::downloads;
 use components::settings;
+use components::widgets::{create_progress_bar_string};
 
 pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
     let mut constraints = vec![
@@ -111,14 +112,13 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
     // Render Global Download Progress
     if active_download_count > 0 {
         let clamped_progress = avg_progress.clamp(0.0, 100.0);
-        let width = main_layout[current_idx].width as usize;
-        let filled_width = (width as f64 * clamped_progress / 100.0).round() as usize;
-        let empty_width = width.saturating_sub(filled_width);
-
-        let progress_line = Line::from(vec![
-            Span::styled("━".repeat(filled_width), Style::default().fg(app.theme.accent)),
-            Span::styled("━".repeat(empty_width), Style::default().fg(Color::DarkGray)),
-        ]);
+        let progress_line = create_progress_bar_string(
+            clamped_progress,
+            main_layout[current_idx].width,
+            app.theme.accent,
+            Color::DarkGray,
+            &app.progress_style,
+        );
         
         f.render_widget(Paragraph::new(progress_line), main_layout[current_idx]);
         current_idx += 1;
@@ -146,21 +146,32 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
 }
 
 fn render_download_gauge(f: &mut Frame, app: &App, progress: f32, status: &str, area: Rect) {
-    let gauge = Gauge::default()
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .border_style(Style::default().fg(app.theme.highlight)),
-        )
-        .gauge_style(Style::default().fg(app.theme.accent).bg(app.theme.bg))
-        .label(
-            ratatui::text::Span::styled(
-                format!(" {} {:.0}% ", status, progress * 100.0),
-                Style::default().fg(app.theme.fg).add_modifier(Modifier::BOLD),
-            )
-        )
-        .ratio(progress.into())
-        .use_unicode(true);
-    f.render_widget(gauge, area);
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(app.theme.highlight));
+    
+    let inner_area = block.inner(area);
+    f.render_widget(block, area);
+
+    if inner_area.height > 0 {
+        let progress_line = create_progress_bar_string(
+            (progress * 100.0) as f64,
+            inner_area.width,
+            app.theme.accent,
+            app.theme.bg,
+            &app.progress_style,
+        );
+
+        let label = format!(" {} {:.0}% ", status, progress * 100.0);
+        let label_span = Span::styled(
+            label,
+            Style::default().fg(app.theme.fg).add_modifier(Modifier::BOLD),
+        );
+
+        // We can't easily overlay text on our custom progress line in a simple Paragraph
+        // so we'll just render them as a Line if there's space.
+        // Actually, let's just render the label in the first line if there's height.
+        f.render_widget(Paragraph::new(vec![Line::from(label_span), progress_line]), inner_area);
+    }
 }

@@ -14,6 +14,7 @@ pub enum SettingItem {
     EnableLogging,
     UseCustomPaths,
     CookieMode,
+    ProgressStyle,
 }
 
 impl SettingItem {
@@ -29,6 +30,7 @@ impl SettingItem {
             Self::EnableLogging,
             Self::UseCustomPaths,
             Self::CookieMode,
+            Self::ProgressStyle,
         ]
     }
 
@@ -44,6 +46,7 @@ impl SettingItem {
             Self::EnableLogging => "Enable Logging",
             Self::UseCustomPaths => "Use Custom Paths",
             Self::CookieMode => "Cookie Mode",
+            Self::ProgressStyle => "Progress Bar Style",
         }
     }
 }
@@ -102,6 +105,7 @@ pub fn render_settings_menu(f: &mut Frame, app: &mut App, area: Rect) {
                     }
                     .to_string()
                 }
+                SettingItem::ProgressStyle => app.progress_style.clone(),
             };
 
             let content = Line::from(vec![

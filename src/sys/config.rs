@@ -23,6 +23,8 @@ pub struct Config {
     pub show_live: bool,
     #[serde(default = "default_true")]
     pub show_playlists: bool,
+    #[serde(default = "default_progress_style")]
+    pub progress_style: String,
 
     // New Fields
     #[serde(default)]
@@ -143,6 +145,9 @@ fn default_download_directory() -> String {
         .to_string_lossy()
         .to_string()
 }
+fn default_progress_style() -> String {
+    "━".to_string()
+}
 
 impl Default for Config {
     fn default() -> Self {
@@ -154,6 +159,7 @@ impl Default for Config {
             animation: default_animation(),
             show_live: default_true(),
             show_playlists: default_true(),
+            progress_style: default_progress_style(),
             executables: Executables::default(),
             cookies: Cookies::default(),
             logging: Logging::default(),
@@ -275,6 +281,9 @@ impl Config {
         info!("Updating existing config file content...");
         let mut new_lines = Vec::new();
         let mut current_section = "".to_string();
+        let mut root_keys_updated = std::collections::HashSet::new();
+        let root_keys = ["theme", "search_limit", "playlist_limit", "download_directory", "animation", "show_live", "show_playlists", "progress_style"];
+        let mut first_section_index = None;
 
         for line in content.lines() {
             let trimmed = line.trim();
@@ -282,6 +291,9 @@ impl Config {
             // Check for section header
             if trimmed.starts_with('[') {
                 if let Some(end_idx) = trimmed.find(']') {
+                    if first_section_index.is_none() {
+                        first_section_index = Some(new_lines.len());
+                    }
                     // Make sure it's not a nested array or something, strictly [section]
                     // Basic heuristic: check if it looks like a section header
                     let potential_section = trimmed[1..end_idx].trim();
@@ -312,22 +324,46 @@ impl Config {
                         "theme" => {
                             if let Ok(val) = serde_json::to_string(&self.theme) {
                                 new_line = format!("theme = {}", val);
+                                root_keys_updated.insert("theme");
                             }
                         },
-                        "search_limit" => new_line = format!("search_limit = {}", self.search_limit),
-                        "playlist_limit" => new_line = format!("playlist_limit = {}", self.playlist_limit),
+                        "search_limit" => {
+                            new_line = format!("search_limit = {}", self.search_limit);
+                            root_keys_updated.insert("search_limit");
+                        },
+                        "playlist_limit" => {
+                            new_line = format!("playlist_limit = {}", self.playlist_limit);
+                            root_keys_updated.insert("playlist_limit");
+                        },
                         "download_directory" => {
                             if let Ok(val) = serde_json::to_string(&self.download_directory) {
                                 new_line = format!("download_directory = {}", val);
+                                root_keys_updated.insert("download_directory");
                             }
                         },
                         "animation" => {
                             if let Ok(anim_val) = serde_json::to_value(self.animation) {
                                 new_line = format!("animation = {}", anim_val);
+                                root_keys_updated.insert("animation");
                             }
                         },
-                        "show_live" => new_line = format!("show_live = {}", self.show_live),
-                        "show_playlists" => new_line = format!("show_playlists = {}", self.show_playlists),
+                        "show_live" => {
+                            new_line = format!("show_live = {}", self.show_live);
+                            root_keys_updated.insert("show_live");
+                        },
+                        "show_playlists" => {
+                            new_line = format!("show_playlists = {}", self.show_playlists);
+                            root_keys_updated.insert("show_playlists");
+                        },
+                        "progress_style" => {
+                            if let Ok(val) = serde_json::to_string(&self.progress_style) {
+                                new_line = format!("progress_style = {}", val);
+                                root_keys_updated.insert("progress_style");
+                            }
+                        },
+                        k if root_keys.contains(&k) => {
+                            root_keys_updated.insert(k);
+                        }
                         _ => {}
                     }
                 } else if current_section == "executables" {
@@ -352,6 +388,36 @@ impl Config {
             }
 
             new_lines.push(new_line);
+        }
+
+        // Add missing root keys
+        let mut missing_lines = Vec::new();
+        for key in root_keys {
+            if !root_keys_updated.contains(key) {
+                match key {
+                    "theme" => if let Ok(val) = serde_json::to_string(&self.theme) { missing_lines.push(format!("theme = {}", val)); },
+                    "search_limit" => missing_lines.push(format!("search_limit = {}", self.search_limit)),
+                    "playlist_limit" => missing_lines.push(format!("playlist_limit = {}", self.playlist_limit)),
+                    "download_directory" => if let Ok(val) = serde_json::to_string(&self.download_directory) { missing_lines.push(format!("download_directory = {}", val)); },
+                    "animation" => if let Ok(val) = serde_json::to_value(self.animation) { missing_lines.push(format!("animation = {}", val)); },
+                    "show_live" => missing_lines.push(format!("show_live = {}", self.show_live)),
+                    "show_playlists" => missing_lines.push(format!("show_playlists = {}", self.show_playlists)),
+                    "progress_style" => if let Ok(val) = serde_json::to_string(&self.progress_style) { missing_lines.push(format!("progress_style = {}", val)); },
+                    _ => {}
+                }
+            }
+        }
+
+        if !missing_lines.is_empty() {
+            if let Some(idx) = first_section_index {
+                // Insert before the first section
+                for (i, m_line) in missing_lines.into_iter().enumerate() {
+                    new_lines.insert(idx + i, m_line);
+                }
+            } else {
+                // Append to the end
+                new_lines.extend(missing_lines);
+            }
         }
 
         Ok(new_lines.join("\n"))
@@ -400,6 +466,12 @@ impl Config {
 
         content.push_str("# Whether to show playlists in search results.\n");
         content.push_str(&format!("show_playlists = {}\n\n", self.show_playlists));
+
+        content.push_str("# The character/string to use for the download progress bar.\n");
+        content.push_str(&format!(
+            "progress_style = {}\n\n",
+            serde_json::to_string(&self.progress_style)?
+        ));
 
         content.push_str("# --- Advanced Configuration ---\n\n");
 

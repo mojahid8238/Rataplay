@@ -102,6 +102,7 @@ fn render_active_downloads(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
                     15,
                     app.theme.accent,
                     Color::DarkGray,
+                    &app.progress_style,
                 )),
                 Cell::from(task.speed.clone()),
                 Cell::from(task.eta.clone()),
