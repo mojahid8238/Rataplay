@@ -9,10 +9,10 @@
 - 🔍 **Instant Search**: Direct search from CLI or via the interactive TUI with live progress.
 - 🖼️ **Visual Excellence**: High-quality thumbnails with specialized support for Kitty and WezTerm graphics protocols.
 - 📺 **Versatile Playback**:
-  - **External**: Play videos in an external `mpv` window.
+  - **External**: Play videos in an external `mpv` window with any prefered quality.
   - **In-Terminal**: Specialized "Watch in Terminal" mode using `mpv`'s TCT output.
   - **Audio Only**: High-fidelity audio streams for background listening.
-- 📥 **Background Downloads**: Multi-threaded downloads with real-time speed, progress, and ETA tracking.
+- 📥 **Background Downloads**: Multi-threaded downloads with real-time speed, progress, and ETA tracking. Re-download in any quality video from downloads panel.
 - 📂 **Local Management**: Browse, play, and manage your downloaded files directly within the app.
 - 🖱️ **Mouse Support**: Navigate search results, manage downloads, and interact with the UI seamlessly using your mouse.
 - 🛠️ **Custom Execution Paths**: Override default system paths for critical dependencies like `mpv`, `yt-dlp`, `ffmpeg`, and `deno`.
@@ -22,7 +22,9 @@
 - 🎛️ **Full Playback Control**: Play/Pause, Seek (5s/30s), and Progress tracking via IPC sockets.
 - 🎹 **System Media Controls**: Native support for Play/Pause, Next/Prev, and Stop via system media keys (MPRIS/SMTC).
 - ⚡ **Async Core**: Powered by Tokio for a zero-latency, non-blocking UI.
-- 🎨 Toggle Themes and Animations easily with commands or from settings menu
+- 🎨 Toggle Themes and Animations easily with commands or from settings menu 
+- Refine visuals with custom download progress style
+
 ## 🛠️ Prerequisites
 
 Rataplay relies on the following tools:
@@ -64,6 +66,7 @@ paru -S rataplay
 |-----|--------|
 | `/` or `s` | Focus Search Input |
 | `j` / `k` or `arrow`| Navigate Results |
+| `→` | Directly play any video from search results |
 | `Enter` | Open Action Menu |
 | `d` | Toggle Downloads & Local Files Panel |
 | `Space` | Select for Batch Actions (Playlists) |
