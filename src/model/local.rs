@@ -7,7 +7,7 @@ pub struct LocalFile {
     pub size: String,
     pub extension: String,
     pub is_garbage: bool, // .part, .ytdl, .tmp
-    pub modified: u64, // timestamp
+    pub modified: u64,    // timestamp
 }
 
 impl LocalFile {

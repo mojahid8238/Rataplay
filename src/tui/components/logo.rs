@@ -1,10 +1,10 @@
+use super::theme::Theme;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Style, Modifier},
+    style::{Color, Modifier, Style},
     widgets::Widget,
 };
-use super::theme::Theme;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -28,7 +28,13 @@ impl AnimationMode {
     }
 
     pub fn all() -> &'static [Self] {
-        &[Self::Wave, Self::Breathe, Self::Glitch, Self::Neon, Self::Static]
+        &[
+            Self::Wave,
+            Self::Breathe,
+            Self::Glitch,
+            Self::Neon,
+            Self::Static,
+        ]
     }
 }
 
@@ -40,7 +46,11 @@ pub struct Logo {
 
 impl Logo {
     pub fn new(frame_index: usize, theme: Theme, mode: AnimationMode) -> Self {
-        Self { frame_index, theme, mode }
+        Self {
+            frame_index,
+            theme,
+            mode,
+        }
     }
 }
 
@@ -95,7 +105,9 @@ impl Widget for Logo {
                 match self.mode {
                     AnimationMode::Wave => {
                         y_offset = match ((self.frame_index + col_idx / 4) / 2) % 4 {
-                            1 => 1, 3 => -1, _ => 0
+                            1 => 1,
+                            3 => -1,
+                            _ => 0,
                         };
                     }
                     AnimationMode::Breathe => {
@@ -139,9 +151,19 @@ impl Widget for Logo {
         let bubble_y = logo_y + logo_height + 2;
 
         if bubble_y < area.bottom() {
-            buf.set_string(logo_x + (logo_width / 2), bubble_y - 1, "", Style::default().fg(Color::Yellow));
+            buf.set_string(
+                logo_x + (logo_width / 2),
+                bubble_y - 1,
+                "",
+                Style::default().fg(Color::Yellow),
+            );
             let bubble_text = format!("( {} )", message);
-            buf.set_string(bubble_x, bubble_y, &bubble_text, Style::default().fg(Color::Yellow));
+            buf.set_string(
+                bubble_x,
+                bubble_y,
+                &bubble_text,
+                Style::default().fg(Color::Yellow),
+            );
         }
     }
 }

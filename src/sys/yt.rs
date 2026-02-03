@@ -180,8 +180,17 @@ pub async fn search_videos_flat(
             }
 
             let title = val["title"].as_str().unwrap_or_default().to_string();
-            let channel = val["uploader"].as_str().or_else(|| val["uploader_id"].as_str()).or_else(|| val["webpage_url_domain"].as_str()).unwrap_or("Unknown").to_string();
-            let channel_id = val["channel_id"].as_str().or_else(|| val["uploader_id"].as_str()).unwrap_or_default().to_string();
+            let channel = val["uploader"]
+                .as_str()
+                .or_else(|| val["uploader_id"].as_str())
+                .or_else(|| val["webpage_url_domain"].as_str())
+                .unwrap_or("Unknown")
+                .to_string();
+            let channel_id = val["channel_id"]
+                .as_str()
+                .or_else(|| val["uploader_id"].as_str())
+                .unwrap_or_default()
+                .to_string();
 
             let item_type_str = val["_type"].as_str().unwrap_or("video");
 

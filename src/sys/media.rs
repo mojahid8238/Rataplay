@@ -1,6 +1,6 @@
 use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, PlatformConfig};
-use tokio::sync::mpsc::UnboundedSender;
 use std::time::Duration;
+use tokio::sync::mpsc::UnboundedSender;
 
 #[derive(Debug, Clone)]
 pub enum MediaEvent {

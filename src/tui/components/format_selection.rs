@@ -1,19 +1,20 @@
 use ratatui::{
-    prelude::Rect,
-    widgets::{Block, Borders, BorderType, Table, Row, Cell},
-    style::{Modifier, Style},
     layout::Constraint,
+    prelude::Rect,
+    style::{Modifier, Style},
+    widgets::{Block, BorderType, Borders, Cell, Row, Table},
 };
 
 use super::widgets::centered_rect;
 use crate::app::App;
 
-pub fn render_format_selection(
-    f: &mut ratatui::Frame,
-    app: &mut App,
-    area: Rect,
-) {
-    let width_percent = if app.format_selection_mode == crate::app::state::FormatSelectionMode::Download { 40 } else { 20 };
+pub fn render_format_selection(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
+    let width_percent =
+        if app.format_selection_mode == crate::app::state::FormatSelectionMode::Download {
+            40
+        } else {
+            20
+        };
     let area = centered_rect(width_percent, 30, area);
     app.format_selection_area = Some(area);
     f.render_widget(ratatui::widgets::Clear, area);
@@ -39,9 +40,9 @@ pub fn render_format_selection(
     }
 
     let header = Row::new(header_cells)
-    .style(header_style)
-    .height(1)
-    .bottom_margin(1);
+        .style(header_style)
+        .height(1)
+        .bottom_margin(1);
 
     let rows: Vec<Row> = formats
         .iter()
@@ -65,13 +66,11 @@ pub fn render_format_selection(
                 }
             };
 
-            let mut cells = vec![
-                Cell::from(format!(" {}", quality)),
-            ];
+            let mut cells = vec![Cell::from(format!(" {}", quality))];
 
             if app.format_selection_mode == crate::app::state::FormatSelectionMode::Download {
-                 cells.push(Cell::from(fmt.ext.clone()));
-                 let size = fmt
+                cells.push(Cell::from(fmt.ext.clone()));
+                let size = fmt
                     .filesize
                     .map(|s| {
                         let mb = s as f64 / 1024.0 / 1024.0;
@@ -86,36 +85,32 @@ pub fn render_format_selection(
             }
 
             Row::new(cells)
-            .style(Style::default().fg(app.theme.fg))
-            .height(1)
+                .style(Style::default().fg(app.theme.fg))
+                .height(1)
         })
         .collect();
 
-    let constraints = if app.format_selection_mode == crate::app::state::FormatSelectionMode::Download {
-        vec![
-            Constraint::Percentage(40),
-            Constraint::Percentage(30),
-            Constraint::Percentage(30),
-        ]
-    } else {
-        vec![
-            Constraint::Percentage(100),
-        ]
-    };
+    let constraints =
+        if app.format_selection_mode == crate::app::state::FormatSelectionMode::Download {
+            vec![
+                Constraint::Percentage(40),
+                Constraint::Percentage(30),
+                Constraint::Percentage(30),
+            ]
+        } else {
+            vec![Constraint::Percentage(100)]
+        };
 
-    let table = Table::new(
-        rows,
-        constraints,
-    )
-    .header(header)
-    .block(block)
-    .row_highlight_style(
-        Style::default()
-            .bg(app.theme.highlight)
-            .fg(app.theme.fg)
-            .add_modifier(Modifier::BOLD),
-    )
-    .highlight_symbol("┃ ");
+    let table = Table::new(rows, constraints)
+        .header(header)
+        .block(block)
+        .row_highlight_style(
+            Style::default()
+                .bg(app.theme.highlight)
+                .fg(app.theme.fg)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol("┃ ");
 
     app.format_selection_state.select(selected_index);
     f.render_stateful_widget(table, area, &mut app.format_selection_state);

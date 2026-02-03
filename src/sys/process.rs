@@ -1,15 +1,23 @@
+use crate::model::settings::Settings;
 use anyhow::Result;
 use std::process::Stdio;
 use tokio::process::{Child, Command};
-use crate::model::settings::Settings;
 
 fn is_audio_path(path: &str) -> bool {
-    let audio_exts = [".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".aac", ".wma"];
+    let audio_exts = [
+        ".mp3", ".m4a", ".flac", ".wav", ".ogg", ".opus", ".aac", ".wma",
+    ];
     let path_lower = path.to_lowercase();
     audio_exts.iter().any(|ext| path_lower.ends_with(ext))
 }
 
-pub fn play_video(url: &str, format: Option<&str>, in_terminal: bool, user_agent: Option<&str>, settings: &Settings) -> Result<Child> {
+pub fn play_video(
+    url: &str,
+    format: Option<&str>,
+    in_terminal: bool,
+    user_agent: Option<&str>,
+    settings: &Settings,
+) -> Result<Child> {
     let mut cmd = Command::new(settings.mpv_cmd());
     cmd.kill_on_drop(true);
 
@@ -35,7 +43,7 @@ pub fn play_video(url: &str, format: Option<&str>, in_terminal: bool, user_agent
     if in_terminal {
         cmd.arg("--vo=tct");
         cmd.arg("--really-quiet");
-        
+
         if is_audio_path(url) {
             // For audio in terminal, show a simple visualizer or just the OSC
             cmd.arg("--force-window=no");
@@ -70,12 +78,18 @@ pub fn play_video(url: &str, format: Option<&str>, in_terminal: bool, user_agent
             cmd.arg(format!("--ytdl-raw-options=cookies-from-browser={}", b));
         }
         crate::model::settings::CookieMode::Netscape(p) => {
-            cmd.arg(format!("--ytdl-raw-options=cookies={}", p.to_string_lossy()));
+            cmd.arg(format!(
+                "--ytdl-raw-options=cookies={}",
+                p.to_string_lossy()
+            ));
         }
         crate::model::settings::CookieMode::Json(p) => {
             let mut tmp = p.clone();
             tmp.set_extension("netscape.tmp");
-            cmd.arg(format!("--ytdl-raw-options=cookies={}", tmp.to_string_lossy()));
+            cmd.arg(format!(
+                "--ytdl-raw-options=cookies={}",
+                tmp.to_string_lossy()
+            ));
         }
         crate::model::settings::CookieMode::Off | crate::model::settings::CookieMode::Unsetted => {}
     }
@@ -106,12 +120,18 @@ pub fn play_audio(url: &str, settings: &Settings) -> Result<Child> {
             cmd.arg(format!("--ytdl-raw-options=cookies-from-browser={}", b));
         }
         crate::model::settings::CookieMode::Netscape(p) => {
-            cmd.arg(format!("--ytdl-raw-options=cookies={}", p.to_string_lossy()));
+            cmd.arg(format!(
+                "--ytdl-raw-options=cookies={}",
+                p.to_string_lossy()
+            ));
         }
         crate::model::settings::CookieMode::Json(p) => {
             let mut tmp = p.clone();
             tmp.set_extension("netscape.tmp");
-            cmd.arg(format!("--ytdl-raw-options=cookies={}", tmp.to_string_lossy()));
+            cmd.arg(format!(
+                "--ytdl-raw-options=cookies={}",
+                tmp.to_string_lossy()
+            ));
         }
         crate::model::settings::CookieMode::Off | crate::model::settings::CookieMode::Unsetted => {}
     }

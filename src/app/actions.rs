@@ -1,10 +1,4 @@
-use super::{
-    App,
-    AppAction,
-    AppState,
-    InputMode,
-    Action
-};
+use super::{Action, App, AppAction, AppState, InputMode};
 use crate::sys::{local, yt};
 use crossterm::event::KeyCode;
 
@@ -13,13 +7,13 @@ pub fn refresh_local_files(app: &mut App) {
     let download_path = download_path_buf.as_path();
     app.local_files = local::scan_local_files(download_path);
     if !app.local_files.is_empty() {
-         if app.selected_local_file_index.is_none() {
-             app.selected_local_file_index = Some(0);
-         } else if let Some(idx) = app.selected_local_file_index {
-             if idx >= app.local_files.len() {
-                 app.selected_local_file_index = Some(app.local_files.len().saturating_sub(1));
-             }
-         }
+        if app.selected_local_file_index.is_none() {
+            app.selected_local_file_index = Some(0);
+        } else if let Some(idx) = app.selected_local_file_index {
+            if idx >= app.local_files.len() {
+                app.selected_local_file_index = Some(app.local_files.len().saturating_sub(1));
+            }
+        }
     } else {
         app.selected_local_file_index = None;
     }
@@ -38,8 +32,8 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
     if current_context == AppState::Downloads {
         // Actions for Local Files
         if let Some(idx) = app.selected_local_file_index {
-             if let Some(file) = app.local_files.get(idx) {
-                 if !file.is_garbage {
+            if let Some(file) = app.local_files.get(idx) {
+                if !file.is_garbage {
                     actions.push(Action::new(
                         KeyCode::Char('w'),
                         "Play (External)",
@@ -48,31 +42,32 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
                     actions.push(Action::new(
                         KeyCode::Char('t'),
                         "Play (Terminal/Default)",
-                        AppAction::PlayLocalTerminal, 
+                        AppAction::PlayLocalTerminal,
                     ));
-                     actions.push(Action::new(
+                    actions.push(Action::new(
                         KeyCode::Char('a'),
                         "Play (Audio)",
                         AppAction::PlayLocalAudio,
                     ));
-                 }
-                 actions.push(Action::new(
+                }
+                actions.push(Action::new(
                     KeyCode::Char('x'),
                     "Delete File",
                     AppAction::DeleteLocalFile,
                 ));
-             }
+            }
         }
         // Actions for Active Downloads
         if let Some(idx) = app.selected_download_index {
             if let Some(task_id) = app.download_manager.task_order.get(idx) {
                 if let Some(task) = app.download_manager.tasks.get(task_id) {
                     match task.status {
-                        crate::model::download::DownloadStatus::Downloading | crate::model::download::DownloadStatus::Pending => {
+                        crate::model::download::DownloadStatus::Downloading
+                        | crate::model::download::DownloadStatus::Pending => {
                             actions.push(Action::new(
                                 KeyCode::Char('p'),
                                 "Pause Download",
-                                AppAction::ResumeDownload, 
+                                AppAction::ResumeDownload,
                             ));
                             actions.push(Action::new(
                                 KeyCode::Char('x'),
@@ -92,7 +87,8 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
                                 AppAction::CancelDownload,
                             ));
                         }
-                        crate::model::download::DownloadStatus::Canceled | crate::model::download::DownloadStatus::Error(_) => {
+                        crate::model::download::DownloadStatus::Canceled
+                        | crate::model::download::DownloadStatus::Error(_) => {
                             actions.push(Action::new(
                                 KeyCode::Char('p'),
                                 "Restart Download",
@@ -104,7 +100,7 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
                                 AppAction::Download,
                             ));
                             if app.selected_download_indices.is_empty() {
-                                 actions.push(Action::new(
+                                actions.push(Action::new(
                                     KeyCode::Char('x'),
                                     "Remove from List",
                                     AppAction::CancelDownload,
@@ -118,7 +114,7 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
                                 AppAction::Download,
                             ));
                             if app.selected_download_indices.is_empty() {
-                                 actions.push(Action::new(
+                                actions.push(Action::new(
                                     KeyCode::Char('x'),
                                     "Remove from List",
                                     AppAction::CancelDownload,
@@ -131,56 +127,78 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
         }
 
         if !app.selected_download_indices.is_empty() {
-             let selected_tasks: Vec<&crate::model::download::DownloadTask> = app.selected_download_indices.iter()
-                 .filter_map(|&idx| app.download_manager.task_order.get(idx))
-                 .filter_map(|id| app.download_manager.tasks.get(id))
-                 .collect();
+            let selected_tasks: Vec<&crate::model::download::DownloadTask> = app
+                .selected_download_indices
+                .iter()
+                .filter_map(|&idx| app.download_manager.task_order.get(idx))
+                .filter_map(|id| app.download_manager.tasks.get(id))
+                .collect();
 
-             let all_inactive = selected_tasks.iter().all(|t| matches!(t.status, crate::model::download::DownloadStatus::Finished | crate::model::download::DownloadStatus::Canceled | crate::model::download::DownloadStatus::Error(_)));
-             let all_resumable = selected_tasks.iter().all(|t| matches!(t.status, crate::model::download::DownloadStatus::Paused | crate::model::download::DownloadStatus::Canceled | crate::model::download::DownloadStatus::Error(_)));
-             let any_active = selected_tasks.iter().any(|t| matches!(t.status, crate::model::download::DownloadStatus::Downloading | crate::model::download::DownloadStatus::Pending | crate::model::download::DownloadStatus::Paused));
+            let all_inactive = selected_tasks.iter().all(|t| {
+                matches!(
+                    t.status,
+                    crate::model::download::DownloadStatus::Finished
+                        | crate::model::download::DownloadStatus::Canceled
+                        | crate::model::download::DownloadStatus::Error(_)
+                )
+            });
+            let all_resumable = selected_tasks.iter().all(|t| {
+                matches!(
+                    t.status,
+                    crate::model::download::DownloadStatus::Paused
+                        | crate::model::download::DownloadStatus::Canceled
+                        | crate::model::download::DownloadStatus::Error(_)
+                )
+            });
+            let any_active = selected_tasks.iter().any(|t| {
+                matches!(
+                    t.status,
+                    crate::model::download::DownloadStatus::Downloading
+                        | crate::model::download::DownloadStatus::Pending
+                        | crate::model::download::DownloadStatus::Paused
+                )
+            });
 
-             if all_resumable && !selected_tasks.is_empty() {
-                 actions.push(Action::new(
+            if all_resumable && !selected_tasks.is_empty() {
+                actions.push(Action::new(
                     KeyCode::Char('P'),
                     "Resume/Restart Selected",
                     AppAction::ResumeSelectedDownloads,
                 ));
-             }
+            }
 
-             if any_active {
-                 actions.push(Action::new(
+            if any_active {
+                actions.push(Action::new(
                     KeyCode::Char('X'),
                     "Cancel Selected Downloads",
                     AppAction::CancelSelectedDownloads,
                 ));
-             }
-             
-             if all_inactive && !selected_tasks.is_empty() {
-                  actions.push(Action::new(
+            }
+
+            if all_inactive && !selected_tasks.is_empty() {
+                actions.push(Action::new(
                     KeyCode::Char('x'),
                     "Remove Selected from List",
                     AppAction::CancelSelectedDownloads,
                 ));
-             }
+            }
         }
 
-         if !app.selected_local_file_indices.is_empty() {
-             actions.push(Action::new(
+        if !app.selected_local_file_indices.is_empty() {
+            actions.push(Action::new(
                 KeyCode::Char('d'),
                 "Delete Selected",
                 AppAction::DeleteSelectedLocalFiles,
             ));
-         }
-         actions.push(Action::new(
+        }
+        actions.push(Action::new(
             KeyCode::Char('c'),
             "Cleanup Garbage (.part, .ytdl)",
             AppAction::CleanupLocalGarbage,
         ));
-                    
+
         return actions;
     }
-
 
     if let Some(idx) = app.selected_result_index {
         if let Some(video) = app.search_results.get(idx) {
@@ -293,39 +311,61 @@ pub fn perform_search(app: &mut App) {
     app.is_searching = true;
     app.current_search_id += 1;
     app.status_message = Some(format!("Searching for '{}'...", app.search_query));
-    log::info!("Searching for: '{}' (ID: {})", app.search_query, app.current_search_id);
+    log::info!(
+        "Searching for: '{}' (ID: {})",
+        app.search_query,
+        app.current_search_id
+    );
 
-    let is_url = 
+    let is_url =
         app.search_query.starts_with("http://") || app.search_query.starts_with("https://");
     app.is_url_mode = is_url;
 
     let mut is_direct_playlist_url = false;
     if is_url {
-        is_direct_playlist_url = app.search_query.contains("list=") 
-            || app.search_query.contains("/playlist/");
-        if !is_direct_playlist_url &&
-           (app.search_query.contains("PL") || app.search_query.contains("UU") ||
-            app.search_query.contains("FL") || app.search_query.contains("RD") ||
-            app.search_query.contains("OL")) {
+        is_direct_playlist_url =
+            app.search_query.contains("list=") || app.search_query.contains("/playlist/");
+        if !is_direct_playlist_url
+            && (app.search_query.contains("PL")
+                || app.search_query.contains("UU")
+                || app.search_query.contains("FL")
+                || app.search_query.contains("RD")
+                || app.search_query.contains("OL"))
+        {
             is_direct_playlist_url = true;
         }
     }
 
-    app.search_offset = 1; 
+    app.search_offset = 1;
     app.is_playlist_mode = is_direct_playlist_url;
 
     if is_url && is_direct_playlist_url {
-        let _ = app
-            .search_tx
-            .send((app.search_query.clone(), 1, app.playlist_limit, app.current_search_id, app.show_live, app.show_playlists));
+        let _ = app.search_tx.send((
+            app.search_query.clone(),
+            1,
+            app.playlist_limit,
+            app.current_search_id,
+            app.show_live,
+            app.show_playlists,
+        ));
     } else if is_url {
-        let _ = app
-            .search_tx
-            .send((app.search_query.clone(), 1, 1, app.current_search_id, app.show_live, app.show_playlists));
+        let _ = app.search_tx.send((
+            app.search_query.clone(),
+            1,
+            1,
+            app.current_search_id,
+            app.show_live,
+            app.show_playlists,
+        ));
     } else {
-        let _ = app
-            .search_tx
-            .send((app.search_query.clone(), 1, app.search_limit, app.current_search_id, app.show_live, app.show_playlists));
+        let _ = app.search_tx.send((
+            app.search_query.clone(),
+            1,
+            app.search_limit,
+            app.current_search_id,
+            app.show_live,
+            app.show_playlists,
+        ));
     }
 }
 
@@ -358,7 +398,8 @@ pub fn load_more(app: &mut App) {
 
 pub fn handle_paste(app: &mut App, text: String) {
     if app.state == AppState::Settings && app.settings_editing_item.is_some() {
-        app.settings_input.insert_str(app.settings_cursor_position, &text);
+        app.settings_input
+            .insert_str(app.settings_cursor_position, &text);
         app.settings_cursor_position += text.len();
     } else {
         if app.input_mode != InputMode::Editing {
@@ -393,7 +434,10 @@ pub fn stop_playback(app: &mut App) {
 pub fn toggle_pause(app: &mut App) {
     if app.playback_cmd_tx.is_some() {
         app.is_paused = !app.is_paused;
-        log::info!("Playback {}", if app.is_paused { "paused" } else { "resumed" });
+        log::info!(
+            "Playback {}",
+            if app.is_paused { "paused" } else { "resumed" }
+        );
         send_command(app, "{\"command\": [\"cycle\", \"pause\"]}\n");
         app.status_message = Some(if app.is_paused {
             "Paused".to_string()
@@ -444,7 +488,7 @@ pub fn start_terminal_loading(app: &mut App, url: String, _title: String) {
             Ok(out) if out.status.success() => {
                 String::from_utf8_lossy(&out.stdout).trim().to_string()
             }
-            _ => "Mozilla/5.0".to_string(), 
+            _ => "Mozilla/5.0".to_string(),
         };
 
         match yt::get_best_stream_url(&url, &settings).await {

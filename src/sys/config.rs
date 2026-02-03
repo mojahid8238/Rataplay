@@ -1,9 +1,9 @@
 use anyhow::Result;
 use directories::ProjectDirs;
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use log::{info, error};
 
 use crate::tui::components::logo::AnimationMode;
 
@@ -195,7 +195,7 @@ impl Config {
                 Ok(config) => {
                     info!("Config loaded from {:?}", path);
                     return Ok(config);
-                },
+                }
                 Err(e) => {
                     error!("Failed to parse config.toml: {}", e);
                     return Err(anyhow::anyhow!("Failed to parse config: {}", e));
@@ -259,15 +259,29 @@ impl Config {
     pub fn save(&self) -> anyhow::Result<()> {
         let path = Self::get_config_path();
         info!("Saving config to {:?}", path);
-        
+
         // If file exists, try to preserve user comments/formatting
         if path.exists() {
             if let Ok(current_content) = fs::read_to_string(&path) {
                 if let Ok(new_content) = self.update_content_preservative(&current_content) {
                     fs::write(&path, new_content)?;
                     info!("Configuration saved successfully (preservative)");
-                    info!("cookies: {}", if self.cookies.enabled { "enabled" } else { "disabled" });
-                    info!("logging: {}", if self.logging.enabled { "enabled" } else { "disabled" });
+                    info!(
+                        "cookies: {}",
+                        if self.cookies.enabled {
+                            "enabled"
+                        } else {
+                            "disabled"
+                        }
+                    );
+                    info!(
+                        "logging: {}",
+                        if self.logging.enabled {
+                            "enabled"
+                        } else {
+                            "disabled"
+                        }
+                    );
                     return Ok(());
                 }
             }
@@ -282,12 +296,21 @@ impl Config {
         let mut new_lines = Vec::new();
         let mut current_section = "".to_string();
         let mut root_keys_updated = std::collections::HashSet::new();
-        let root_keys = ["theme", "search_limit", "playlist_limit", "download_directory", "animation", "show_live", "show_playlists", "progress_style"];
+        let root_keys = [
+            "theme",
+            "search_limit",
+            "playlist_limit",
+            "download_directory",
+            "animation",
+            "show_live",
+            "show_playlists",
+            "progress_style",
+        ];
         let mut first_section_index = None;
 
         for line in content.lines() {
             let trimmed = line.trim();
-            
+
             // Check for section header
             if trimmed.starts_with('[') {
                 if let Some(end_idx) = trimmed.find(']') {
@@ -298,7 +321,7 @@ impl Config {
                     // Basic heuristic: check if it looks like a section header
                     let potential_section = trimmed[1..end_idx].trim();
                     if !potential_section.is_empty() {
-                         current_section = potential_section.to_string();
+                        current_section = potential_section.to_string();
                     }
                 }
                 new_lines.push(line.to_string());
@@ -316,9 +339,9 @@ impl Config {
             // Try to match key-value pair
             if let Some((key_part, _val_part)) = trimmed.split_once('=') {
                 let key = key_part.trim();
-                
+
                 // Handle inline comments in key part? unlikely for standard TOML keys but trimming helps
-                
+
                 if current_section.is_empty() {
                     match key {
                         "theme" => {
@@ -326,41 +349,41 @@ impl Config {
                                 new_line = format!("theme = {}", val);
                                 root_keys_updated.insert("theme");
                             }
-                        },
+                        }
                         "search_limit" => {
                             new_line = format!("search_limit = {}", self.search_limit);
                             root_keys_updated.insert("search_limit");
-                        },
+                        }
                         "playlist_limit" => {
                             new_line = format!("playlist_limit = {}", self.playlist_limit);
                             root_keys_updated.insert("playlist_limit");
-                        },
+                        }
                         "download_directory" => {
                             if let Ok(val) = serde_json::to_string(&self.download_directory) {
                                 new_line = format!("download_directory = {}", val);
                                 root_keys_updated.insert("download_directory");
                             }
-                        },
+                        }
                         "animation" => {
                             if let Ok(anim_val) = serde_json::to_value(self.animation) {
                                 new_line = format!("animation = {}", anim_val);
                                 root_keys_updated.insert("animation");
                             }
-                        },
+                        }
                         "show_live" => {
                             new_line = format!("show_live = {}", self.show_live);
                             root_keys_updated.insert("show_live");
-                        },
+                        }
                         "show_playlists" => {
                             new_line = format!("show_playlists = {}", self.show_playlists);
                             root_keys_updated.insert("show_playlists");
-                        },
+                        }
                         "progress_style" => {
                             if let Ok(val) = serde_json::to_string(&self.progress_style) {
                                 new_line = format!("progress_style = {}", val);
                                 root_keys_updated.insert("progress_style");
                             }
-                        },
+                        }
                         k if root_keys.contains(&k) => {
                             root_keys_updated.insert(k);
                         }
@@ -378,7 +401,7 @@ impl Config {
                     if key == "enabled" {
                         new_line = format!("enabled = {}", self.logging.enabled);
                     } else if key == "path" {
-                         if let Some(p) = &self.logging.path {
+                        if let Some(p) = &self.logging.path {
                             if let Ok(val) = serde_json::to_string(&p.to_string_lossy()) {
                                 new_line = format!("path = {}", val);
                             }
@@ -395,14 +418,36 @@ impl Config {
         for key in root_keys {
             if !root_keys_updated.contains(key) {
                 match key {
-                    "theme" => if let Ok(val) = serde_json::to_string(&self.theme) { missing_lines.push(format!("theme = {}", val)); },
-                    "search_limit" => missing_lines.push(format!("search_limit = {}", self.search_limit)),
-                    "playlist_limit" => missing_lines.push(format!("playlist_limit = {}", self.playlist_limit)),
-                    "download_directory" => if let Ok(val) = serde_json::to_string(&self.download_directory) { missing_lines.push(format!("download_directory = {}", val)); },
-                    "animation" => if let Ok(val) = serde_json::to_value(self.animation) { missing_lines.push(format!("animation = {}", val)); },
+                    "theme" => {
+                        if let Ok(val) = serde_json::to_string(&self.theme) {
+                            missing_lines.push(format!("theme = {}", val));
+                        }
+                    }
+                    "search_limit" => {
+                        missing_lines.push(format!("search_limit = {}", self.search_limit))
+                    }
+                    "playlist_limit" => {
+                        missing_lines.push(format!("playlist_limit = {}", self.playlist_limit))
+                    }
+                    "download_directory" => {
+                        if let Ok(val) = serde_json::to_string(&self.download_directory) {
+                            missing_lines.push(format!("download_directory = {}", val));
+                        }
+                    }
+                    "animation" => {
+                        if let Ok(val) = serde_json::to_value(self.animation) {
+                            missing_lines.push(format!("animation = {}", val));
+                        }
+                    }
                     "show_live" => missing_lines.push(format!("show_live = {}", self.show_live)),
-                    "show_playlists" => missing_lines.push(format!("show_playlists = {}", self.show_playlists)),
-                    "progress_style" => if let Ok(val) = serde_json::to_string(&self.progress_style) { missing_lines.push(format!("progress_style = {}", val)); },
+                    "show_playlists" => {
+                        missing_lines.push(format!("show_playlists = {}", self.show_playlists))
+                    }
+                    "progress_style" => {
+                        if let Ok(val) = serde_json::to_string(&self.progress_style) {
+                            missing_lines.push(format!("progress_style = {}", val));
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -436,7 +481,10 @@ impl Config {
 
         content.push_str("# The visual style of the application.\n");
         content.push_str("# Available themes: \"Default\", \"Dracula\", \"Matrix\", \"Cyberpunk\", \"Catppuccin\"\n");
-        content.push_str(&format!("theme = {}\n\n", serde_json::to_string(&self.theme)?));
+        content.push_str(&format!(
+            "theme = {}\n\n",
+            serde_json::to_string(&self.theme)?
+        ));
 
         content.push_str(
             "# The number of results to fetch per search page or \"Load More\" action.\n",
@@ -479,22 +527,34 @@ impl Config {
         content.push_str(&format!("enabled = {}\n", self.executables.enabled));
         content.push_str("# Absolute paths to binaries. If commented out, system PATH is used.\n");
         if let Some(p) = &self.executables.mpv {
-            content.push_str(&format!("mpv = {}\n", serde_json::to_string(&p.to_string_lossy())?));
+            content.push_str(&format!(
+                "mpv = {}\n",
+                serde_json::to_string(&p.to_string_lossy())?
+            ));
         } else {
             content.push_str("# mpv = \"/usr/bin/mpv\"\n");
         }
         if let Some(p) = &self.executables.ytdlp {
-            content.push_str(&format!("ytdlp = {}\n", serde_json::to_string(&p.to_string_lossy())?));
+            content.push_str(&format!(
+                "ytdlp = {}\n",
+                serde_json::to_string(&p.to_string_lossy())?
+            ));
         } else {
             content.push_str("# ytdlp = \"/usr/bin/yt-dlp\"\n");
         }
         if let Some(p) = &self.executables.ffmpeg {
-            content.push_str(&format!("ffmpeg = {}\n", serde_json::to_string(&p.to_string_lossy())?));
+            content.push_str(&format!(
+                "ffmpeg = {}\n",
+                serde_json::to_string(&p.to_string_lossy())?
+            ));
         } else {
             content.push_str("# ffmpeg = \"/usr/bin/ffmpeg\"\n");
         }
         if let Some(p) = &self.executables.deno {
-            content.push_str(&format!("deno = {}\n", serde_json::to_string(&p.to_string_lossy())?));
+            content.push_str(&format!(
+                "deno = {}\n",
+                serde_json::to_string(&p.to_string_lossy())?
+            ));
         } else {
             content.push_str("# deno = \"/usr/bin/deno\"\n");
         }
@@ -506,7 +566,9 @@ impl Config {
         content.push_str("# \n");
         content.push_str("# --- How to configure ---\n");
         content.push_str("# 1. Browser: Use cookies from your installed browser.\n");
-        content.push_str("# Please keep in mind that you have to install secretstorage to use this feature.\n");
+        content.push_str(
+            "# Please keep in mind that you have to install secretstorage to use this feature.\n",
+        );
         content.push_str("#    source.type = \"browser\"\n");
         content.push_str("#    source.value = \"chrome\"  # Options: chrome, firefox, edge, safari, opera, vivaldi, brave\n");
         content.push_str("# \n");
@@ -526,15 +588,24 @@ impl Config {
             }
             CookieSource::Browser(name) => {
                 content.push_str("#source.type = \"browser\"\n");
-                content.push_str(&format!("#source.value = {}\n", serde_json::to_string(name)?));
+                content.push_str(&format!(
+                    "#source.value = {}\n",
+                    serde_json::to_string(name)?
+                ));
             }
             CookieSource::Netscape(path) => {
                 content.push_str("#source.type = \"netscape\"\n");
-                content.push_str(&format!("#source.value = {}\n", serde_json::to_string(&path.to_string_lossy())?));
+                content.push_str(&format!(
+                    "#source.value = {}\n",
+                    serde_json::to_string(&path.to_string_lossy())?
+                ));
             }
             CookieSource::Json(path) => {
                 content.push_str("#source.type = \"json\"\n");
-                content.push_str(&format!("#source.value = {}\n", serde_json::to_string(&path.to_string_lossy())?));
+                content.push_str(&format!(
+                    "#source.value = {}\n",
+                    serde_json::to_string(&path.to_string_lossy())?
+                ));
             }
         }
         content.push_str("\n");
@@ -550,7 +621,10 @@ impl Config {
         #[cfg(target_os = "macos")]
         content.push_str("# macOS:   ~/Library/Logs/rataplay/rataplay.log\n");
         if let Some(p) = &self.logging.path {
-            content.push_str(&format!("path = {}\n", serde_json::to_string(&p.to_string_lossy())?));
+            content.push_str(&format!(
+                "path = {}\n",
+                serde_json::to_string(&p.to_string_lossy())?
+            ));
         } else {
             content.push_str("# You can set a custom path for the log file.\n");
             content.push_str("# path = \"/absolute/path/to/rataplay.log\"\n");
@@ -558,9 +632,14 @@ impl Config {
 
         fs::write(path, content)?;
         info!("Configuration saved successfully (new/force)");
-        info!("cookies: {}", if self.cookies.enabled { "enabled" } else { "disabled" });
+        info!(
+            "cookies: {}",
+            if self.cookies.enabled {
+                "enabled"
+            } else {
+                "disabled"
+            }
+        );
         Ok(())
     }
 }
-
-

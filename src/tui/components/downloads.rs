@@ -1,8 +1,8 @@
 use ratatui::{
     prelude::{Constraint, Direction, Layout, Rect},
-    widgets::{Block, Borders, BorderType, Table, Row, Cell},
-    style::{Modifier, Style, Color},
+    style::{Color, Modifier, Style},
     text::Span,
+    widgets::{Block, BorderType, Borders, Cell, Row, Table},
 };
 
 use crate::app::{App, AppState};
@@ -12,14 +12,11 @@ use super::widgets::{create_progress_bar_string, truncate_str};
 
 pub fn render_downloads_view(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     let has_downloads = !app.download_manager.task_order.is_empty();
-    
+
     let chunks = if has_downloads {
         Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Percentage(40), 
-                Constraint::Percentage(60), 
-            ])
+            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
             .split(area)
     } else {
         Layout::default()
@@ -58,13 +55,16 @@ fn render_active_downloads(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
         .task_order
         .iter()
         .enumerate()
-        .filter_map(|(i, id)| {
-            app.download_manager.tasks.get(id).map(|task| (i, task))
-        })
+        .filter_map(|(i, id)| app.download_manager.tasks.get(id).map(|task| (i, task)))
         .map(|(i, task)| {
-            let is_focused = app.state == AppState::Downloads && app.selected_download_index == Some(i);
+            let is_focused =
+                app.state == AppState::Downloads && app.selected_download_index == Some(i);
             let indicator = if is_focused { "┃ " } else { "  " };
-            let checkbox = if app.selected_download_indices.contains(&i) { "[x] " } else { "[ ] " };
+            let checkbox = if app.selected_download_indices.contains(&i) {
+                "[x] "
+            } else {
+                "[ ] "
+            };
 
             let status_span = match &task.status {
                 DownloadStatus::Downloading => {
@@ -86,12 +86,15 @@ fn render_active_downloads(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
             };
 
             let row_style = if is_focused {
-                Style::default().bg(app.theme.highlight).fg(app.theme.fg).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .bg(app.theme.highlight)
+                    .fg(app.theme.fg)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
 
-            let title_avail = (area.width as f64 * 0.3).round() as usize; 
+            let title_avail = (area.width as f64 * 0.3).round() as usize;
             let display_title = truncate_str(&task.title, title_avail.saturating_sub(6));
 
             Row::new(vec![
@@ -131,8 +134,13 @@ fn render_active_downloads(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
             .border_type(BorderType::Rounded)
             .title(" Active Tasks "),
     );
-    
-    app.downloads_active_state.select(if app.state == AppState::Downloads { app.selected_download_index } else { None });
+
+    app.downloads_active_state
+        .select(if app.state == AppState::Downloads {
+            app.selected_download_index
+        } else {
+            None
+        });
     f.render_stateful_widget(table, area, &mut app.downloads_active_state);
 }
 
@@ -156,20 +164,24 @@ fn render_local_files(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
         .iter()
         .enumerate()
         .map(|(i, file)| {
-            let is_focused = app.state == AppState::Downloads && app.selected_local_file_index == Some(i);
+            let is_focused =
+                app.state == AppState::Downloads && app.selected_local_file_index == Some(i);
             let is_selected = app.selected_local_file_indices.contains(&i);
-            
+
             let indicator = if is_focused { "┃ " } else { "  " };
             let checkbox = if is_selected { "[x] " } else { "[ ] " };
 
             let status_span = if file.is_garbage {
-                 Span::styled("Incomplete/Temp", Style::default().fg(Color::Yellow))
+                Span::styled("Incomplete/Temp", Style::default().fg(Color::Yellow))
             } else {
-                 Span::styled("Downloaded", Style::default().fg(Color::Green))
+                Span::styled("Downloaded", Style::default().fg(Color::Green))
             };
 
             let row_style = if is_focused {
-                Style::default().bg(app.theme.highlight).fg(app.theme.fg).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .bg(app.theme.highlight)
+                    .fg(app.theme.fg)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
@@ -201,10 +213,15 @@ fn render_local_files(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     .block(
         Block::default()
             .borders(Borders::ALL)
-                            .border_type(BorderType::Rounded)
-                        .title(" Local Files "),
-                );
-            
-                app.downloads_local_state.select(if app.state == AppState::Downloads { app.selected_local_file_index } else { None });
-                f.render_stateful_widget(table, area, &mut app.downloads_local_state);
-            }
+            .border_type(BorderType::Rounded)
+            .title(" Local Files "),
+    );
+
+    app.downloads_local_state
+        .select(if app.state == AppState::Downloads {
+            app.selected_local_file_index
+        } else {
+            None
+        });
+    f.render_stateful_widget(table, area, &mut app.downloads_local_state);
+}

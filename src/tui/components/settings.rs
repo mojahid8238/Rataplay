@@ -89,22 +89,20 @@ pub fn render_settings_menu(f: &mut Frame, app: &mut App, area: Rect) {
                             || app.settings.ytdlp_path != "yt-dlp"
                             || app.settings.ffmpeg_path != "ffmpeg"
                             || app.settings.deno_path != "deno";
-                        
+
                         if has_custom_paths {
                             "On".to_string()
                         } else {
                             "Unsetted".to_string()
                         }
                     }
-                },
-                SettingItem::CookieMode => {
-                    match &app.settings.cookie_mode {
-                        crate::model::settings::CookieMode::Off => "Off",
-                        crate::model::settings::CookieMode::Unsetted => "Unsetted",
-                        _ => "On",
-                    }
-                    .to_string()
                 }
+                SettingItem::CookieMode => match &app.settings.cookie_mode {
+                    crate::model::settings::CookieMode::Off => "Off",
+                    crate::model::settings::CookieMode::Unsetted => "Unsetted",
+                    _ => "On",
+                }
+                .to_string(),
                 SettingItem::ProgressStyle => app.progress_style.clone(),
             };
 

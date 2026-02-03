@@ -30,7 +30,9 @@ pub async fn spawn_ipc_handler(
                 let reader_handle = tokio::spawn(async move {
                     let mut line = String::new();
                     while let Ok(n) = reader.read_line(&mut line).await {
-                        if n == 0 { break; }
+                        if n == 0 {
+                            break;
+                        }
                         let _ = res_tx.send(line.clone());
                         line.clear();
                     }
@@ -60,7 +62,9 @@ pub async fn spawn_ipc_handler(
             let reader_handle = tokio::spawn(async move {
                 let mut line = String::new();
                 while let Ok(n) = reader.read_line(&mut line).await {
-                    if n == 0 { break; }
+                    if n == 0 {
+                        break;
+                    }
                     let _ = res_tx.send(line.clone());
                     line.clear();
                 }
@@ -78,7 +82,7 @@ pub async fn spawn_ipc_handler(
     if !cfg!(windows) {
         let _ = tokio::fs::remove_file(&socket_path).await;
     }
-    
+
     Ok(())
 }
 
@@ -112,4 +116,3 @@ pub async fn spawn_ipc_writer(
 
     Ok(())
 }
-

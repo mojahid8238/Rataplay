@@ -1,27 +1,41 @@
 use ratatui::{
     prelude::Rect,
-    widgets::{Block, Borders, BorderType, Paragraph},
-    style::{Modifier, Style, Color},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
+    widgets::{Block, BorderType, Borders, Paragraph},
 };
 
 use crate::app::App;
 
 pub fn render_playback_bar(f: &mut ratatui::Frame, app: &App, area: Rect) {
     let title = app.playback_title.as_deref().unwrap_or("Unknown");
-    
+
     let duration_str = app
         .playback_duration_str
         .as_deref()
         .unwrap_or("00:00/00:00");
 
-    let status_str = if app.is_paused { " PAUSED " } else { " PLAYING " };
-    let status_color = if app.is_paused { Color::Gray } else { app.theme.accent };
+    let status_str = if app.is_paused {
+        " PAUSED "
+    } else {
+        " PLAYING "
+    };
+    let status_color = if app.is_paused {
+        Color::Gray
+    } else {
+        app.theme.accent
+    };
 
-    let overhead = 70; 
+    let overhead = 70;
     let available_width = area.width.saturating_sub(overhead) as usize;
     let displayed_title = if title.chars().count() > available_width && available_width > 3 {
-        format!("{}...", title.chars().take(available_width.saturating_sub(3)).collect::<String>())
+        format!(
+            "{}...",
+            title
+                .chars()
+                .take(available_width.saturating_sub(3))
+                .collect::<String>()
+        )
     } else {
         title.to_string()
     };
@@ -43,7 +57,9 @@ pub fn render_playback_bar(f: &mut ratatui::Frame, app: &App, area: Rect) {
         ),
         Span::styled(
             displayed_title,
-            Style::default().fg(app.theme.fg).add_modifier(Modifier::ITALIC),
+            Style::default()
+                .fg(app.theme.fg)
+                .add_modifier(Modifier::ITALIC),
         ),
         Span::raw(" | "),
         Span::styled(

@@ -4,19 +4,21 @@ mod model;
 mod sys;
 mod tui;
 
-
+use crate::model::settings::Settings;
 use anyhow::Result;
-use app::{App, AppAction, handle_key_event, handle_mouse_event, handle_paste, perform_search, stop_playback, on_tick};
+use app::{
+    App, AppAction, handle_key_event, handle_mouse_event, handle_paste, on_tick, perform_search,
+    stop_playback,
+};
 use clap::Parser;
 use cli::Cli;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event},
     event::{DisableBracketedPaste, EnableBracketedPaste},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use crate::model::settings::Settings;
-use ratatui::{backend::CrosstermBackend, Terminal};
+use ratatui::{Terminal, backend::CrosstermBackend};
 use ratatui_image::picker::Picker;
 use std::process::exit;
 use std::{
@@ -74,7 +76,9 @@ async fn main() -> Result<()> {
     match sys::deps::check_dependencies(&settings) {
         Ok(status) => {
             // Run the update command to fetch live version info
-            let update_check = std::process::Command::new(settings.ytdlp_cmd()).arg("-U").output();
+            let update_check = std::process::Command::new(settings.ytdlp_cmd())
+                .arg("-U")
+                .output();
 
             match update_check {
                 Ok(output) => {
@@ -107,7 +111,9 @@ async fn main() -> Result<()> {
                             println!("--------------------------------------------------");
                             println!("🚀 Latest version: {}", latest);
                             println!("--------------------------------------------------");
-                            println!("CRITICAL: You must update to ensure search and playback features work.");
+                            println!(
+                                "CRITICAL: You must update to ensure search and playback features work."
+                            );
                             println!(
                                 "yt-dlp extractors change daily; being behind may cause failures."
                             );
@@ -134,7 +140,9 @@ async fn main() -> Result<()> {
                 Err(_) => {
                     // Fallback for when the command fails to execute (e.g., no internet or binary missing)
                     println!("yt-dlp version: {}", status.yt_dlp_version);
-                    println!("❌ WARNING: Unable to check for updates. Please ensure you are on the latest version");
+                    println!(
+                        "❌ WARNING: Unable to check for updates. Please ensure you are on the latest version"
+                    );
                     println!("   to prevent search and download features from breaking.");
                 }
             }

@@ -1,7 +1,7 @@
 use ratatui::{
     prelude::Rect,
-    widgets::{Block, Borders, BorderType, Paragraph},
     style::{Modifier, Style},
+    widgets::{Block, BorderType, Borders, Paragraph},
 };
 
 use crate::app::{App, InputMode};

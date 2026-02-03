@@ -1,12 +1,8 @@
-use super::{
-    App,
-    AppState,
-    InputMode
-};
-use crate::sys::yt;
-use crate::sys::media::MediaEvent;
-use crate::model::download::DownloadEvent;
 use super::actions;
+use super::{App, AppState, InputMode};
+use crate::model::download::DownloadEvent;
+use crate::sys::media::MediaEvent;
+use crate::sys::yt;
 
 pub fn on_tick(app: &mut App) {
     // Update Pet Animation
@@ -60,7 +56,7 @@ pub fn on_tick(app: &mut App) {
 
                             // Flush pending resolutions
                             if !app.pending_resolution_ids.is_empty() {
-                                let items: Vec<String> = 
+                                let items: Vec<String> =
                                     app.pending_resolution_ids.drain(..).collect();
                                 let _ = app.details_tx.send(items);
                             }
@@ -109,7 +105,7 @@ pub fn on_tick(app: &mut App) {
                 }
                 // Remove from pending
                 app.pending_resolution_ids.retain(|x| x != &url);
-                
+
                 // Trigger image request for selection again if needed
                 request_image_for_selection(app);
             }
@@ -322,7 +318,7 @@ pub fn move_selection(app: &mut App, delta: i32) {
     }
 
     let len = if !app.search_results.is_empty() && (!app.is_url_mode || app.is_playlist_mode) {
-        app.search_results.len() + 1 
+        app.search_results.len() + 1
     } else {
         app.search_results.len()
     };

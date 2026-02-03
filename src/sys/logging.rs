@@ -1,10 +1,10 @@
-use std::path::PathBuf;
 use anyhow::Result;
 use fern::colors::{Color, ColoredLevelConfig};
-use std::sync::RwLock;
 use std::fs::File;
 use std::io::Write;
+use std::path::PathBuf;
 use std::sync::OnceLock;
+use std::sync::RwLock;
 
 // Global storage for the log file handle
 static LOG_FILE: OnceLock<RwLock<Option<File>>> = OnceLock::new();
@@ -41,17 +41,17 @@ pub fn update_log_path(path: PathBuf) -> Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    
+
     let file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(path)?;
-    
+
     let lock = LOG_FILE.get_or_init(|| RwLock::new(None));
     if let Ok(mut file_opt) = lock.write() {
         *file_opt = Some(file);
     }
-    
+
     Ok(())
 }
 
@@ -85,7 +85,7 @@ pub fn init_logger(path: PathBuf, enabled: bool) -> Result<()> {
             ))
         })
         // Always allow Info+ in the dispatch, control actual output via global max level
-        .level(log::LevelFilter::Info) 
+        .level(log::LevelFilter::Info)
         .chain(Box::new(DynamicWriter) as Box<dyn Write + Send + 'static>)
         .apply()?;
 

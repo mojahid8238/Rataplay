@@ -5,9 +5,9 @@ use crate::sys::{image as sys_image, local, yt};
 use image::DynamicImage;
 use ratatui::layout::Rect;
 use ratatui::widgets::{ListState, TableState};
-use std::time::{Duration, Instant};
-use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use crate::tui::components::logo::AnimationMode;
@@ -310,7 +310,7 @@ impl App {
                 let log_path = config.get_log_path().ok();
 
                 self.settings = crate::model::settings::Settings::from_config(config);
-                
+
                 // Update shared settings for background tasks
                 if let Ok(mut w) = self.shared_settings.write() {
                     *w = self.settings.clone();
@@ -323,12 +323,12 @@ impl App {
                     log::LevelFilter::Off
                 };
                 log::set_max_level(log_level);
-                
+
                 // Update log path if it changed
                 if let Some(path) = log_path {
                     let _ = crate::sys::logging::update_log_path(path);
                 }
-                
+
                 self.status_message = Some("Configuration reloaded successfully.".to_string());
             }
             Err(e) => {
@@ -339,7 +339,7 @@ impl App {
 
     pub fn cleanup(&mut self) {
         log::info!("Starting application cleanup...");
-        
+
         // Stop playback
         if let Some(mut child) = self.playback_process.take() {
             log::info!("Killing playback process...");
@@ -347,7 +347,10 @@ impl App {
         }
 
         // Abort all background tasks
-        log::info!("Aborting background tasks ({})...", self.abort_handles.len());
+        log::info!(
+            "Aborting background tasks ({})...",
+            self.abort_handles.len()
+        );
         for handle in &self.abort_handles {
             handle.abort();
         }
@@ -359,7 +362,7 @@ impl App {
                 handle.abort();
             }
         }
-        
+
         // The Download manager task handles its own children abort when its cmd_rx closes (on drop)
         // or when it is aborted itself.
     }
@@ -489,12 +492,12 @@ impl App {
                         if let Some((video, format_id)) = res {
                             let event_tx = download_event_tx.clone();
                             let video_id = video.id.clone();
-                            
+
                             let current_settings = task_settings.read().unwrap().clone();
                             let resolved_download_dir = local::resolve_path(&current_settings.download_directory)
                                 .to_string_lossy()
                                 .to_string();
-                                
+
                             let mut child = match crate::sys::download::start_download(&video, &format_id, &resolved_download_dir, &current_settings).await {
                                 Ok(child) => child,
                                 Err(e) => {
@@ -578,13 +581,13 @@ impl App {
                                         else => break, // All streams closed and child exited
                                     }
                                 }
-                                
+
                                 // Remove itself from active handles on completion
                                 if let Ok(mut w) = monitor_active_handles.write() {
                                     w.remove(&v_id);
                                 }
                             });
-                            
+
                             if let Ok(mut w) = task_active_handles.write() {
                                 w.insert(video_id, monitor_task.abort_handle());
                             }
@@ -661,12 +664,12 @@ impl App {
                 let mut task = crate::model::download::DownloadTask::new(video.clone(), format_id);
                 task.status = status;
                 task.info_json_path = Some(path);
-                
+
                 if task.status == crate::model::download::DownloadStatus::Finished {
-                     task.progress = 100.0;
-                     task.total_size = "Cached".to_string(); 
+                    task.progress = 100.0;
+                    task.total_size = "Cached".to_string();
                 }
-                
+
                 download_manager.tasks.insert(id.clone(), task);
                 download_manager.task_order.push(id);
             }

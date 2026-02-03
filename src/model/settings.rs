@@ -12,7 +12,7 @@ pub struct Settings {
     pub ytdlp_path: String,
     pub ffmpeg_path: String,
     pub deno_path: String,
-    
+
     pub download_directory: String,
 
     // Cookie details
@@ -113,8 +113,6 @@ impl Settings {
 
         settings
     }
-
-
 
     // Helper methods to get effective command
     pub fn mpv_cmd(&self) -> &str {

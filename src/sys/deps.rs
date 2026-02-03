@@ -1,6 +1,6 @@
-use anyhow::{bail, Context, Result};
-use std::process::Command;
 use crate::model::settings::Settings;
+use anyhow::{Context, Result, bail};
+use std::process::Command;
 
 pub struct DependencyStatus {
     pub yt_dlp_version: String,
@@ -16,9 +16,13 @@ pub fn check_dependencies(settings: &Settings) -> Result<DependencyStatus> {
 
     match &settings.cookie_mode {
         crate::model::settings::CookieMode::Off => log::info!("  cookies: disabled"),
-        crate::model::settings::CookieMode::Unsetted => log::info!("  cookies: enabled but not configured"),
+        crate::model::settings::CookieMode::Unsetted => {
+            log::info!("  cookies: enabled but not configured")
+        }
         crate::model::settings::CookieMode::Browser(b) => log::info!("  cookies: browser ({})", b),
-        crate::model::settings::CookieMode::Netscape(p) => log::info!("  cookies: netscape file ({:?})", p),
+        crate::model::settings::CookieMode::Netscape(p) => {
+            log::info!("  cookies: netscape file ({:?})", p)
+        }
         crate::model::settings::CookieMode::Json(p) => log::info!("  cookies: JSON file ({:?})", p),
     }
 
@@ -35,7 +39,10 @@ fn check_yt_dlp(settings: &Settings) -> Result<String> {
     let output = Command::new(settings.ytdlp_cmd())
         .arg("--version")
         .output()
-        .context(format!("Failed to execute yt-dlp at '{}'. Is it installed and in your PATH?", settings.ytdlp_cmd()))?;
+        .context(format!(
+            "Failed to execute yt-dlp at '{}'. Is it installed and in your PATH?",
+            settings.ytdlp_cmd()
+        ))?;
 
     if !output.status.success() {
         bail!("yt-dlp command failed with status: {}", output.status);

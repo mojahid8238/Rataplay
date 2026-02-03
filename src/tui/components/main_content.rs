@@ -521,7 +521,8 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                         f.render_widget(p, inner_area);
                     }
                 }
-            } else if (!app.is_url_mode || app.is_playlist_mode) && idx == app.search_results.len() {
+            } else if (!app.is_url_mode || app.is_playlist_mode) && idx == app.search_results.len()
+            {
                 let text = "\n\n  Press ENTER to load more results...";
                 let p = Paragraph::new(text).style(Style::default().fg(app.theme.accent));
                 f.render_widget(p, inner_area);

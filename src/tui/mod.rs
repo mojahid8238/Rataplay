@@ -3,22 +3,22 @@ use crate::model::download::DownloadStatus;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Modifier, Style, Color},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::*,
 };
 use ratatui_image::picker::Picker;
 
 pub mod components;
-use components::search_bar;
-use components::status_bar;
-use components::playback_bar;
-use components::main_content;
 use components::action_menu;
-use components::format_selection;
 use components::downloads;
+use components::format_selection;
+use components::main_content;
+use components::playback_bar;
+use components::search_bar;
 use components::settings;
-use components::widgets::{create_progress_bar_string};
+use components::status_bar;
+use components::widgets::create_progress_bar_string;
 
 pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
     let mut constraints = vec![
@@ -36,10 +36,18 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
 
     // Global Download Progress (Combined)
     let (active_download_count, avg_progress) = {
-        let tasks: Vec<_> = app.download_manager.tasks.values()
-            .filter(|t| matches!(t.status, DownloadStatus::Downloading | DownloadStatus::Pending | DownloadStatus::Paused))
+        let tasks: Vec<_> = app
+            .download_manager
+            .tasks
+            .values()
+            .filter(|t| {
+                matches!(
+                    t.status,
+                    DownloadStatus::Downloading | DownloadStatus::Pending | DownloadStatus::Paused
+                )
+            })
             .collect();
-        
+
         if tasks.is_empty() {
             (0, 0.0)
         } else {
@@ -47,7 +55,7 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
             (tasks.len(), total / tasks.len() as f64)
         }
     };
-    
+
     if active_download_count > 0 {
         constraints.push(Constraint::Length(1)); // Thin progress line
         constraints.push(Constraint::Length(2)); // Status Bar (no top border)
@@ -79,7 +87,7 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
             .split(main_layout[1]);
         main_content_area = content_chunks[0];
         downloads_area = content_chunks[1];
-        
+
         app.main_content_area = main_content_area;
         app.downloads_area = Some(downloads_area);
 
@@ -87,7 +95,7 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
         downloads::render_downloads_view(f, app, downloads_area);
     } else {
         main_content_area = main_layout[1];
-        
+
         app.main_content_area = main_content_area;
         app.downloads_area = None;
 
@@ -104,8 +112,18 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
     }
 
     if app.terminal_loading {
-        let status = if app.terminal_loading_error.is_some() { "ERROR" } else { "Loading for Terminal..." };
-        render_download_gauge(f, app, app.terminal_loading_progress, status, main_layout[current_idx]);
+        let status = if app.terminal_loading_error.is_some() {
+            "ERROR"
+        } else {
+            "Loading for Terminal..."
+        };
+        render_download_gauge(
+            f,
+            app,
+            app.terminal_loading_progress,
+            status,
+            main_layout[current_idx],
+        );
         current_idx += 1;
     }
 
@@ -119,7 +137,7 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
             Color::DarkGray,
             &app.progress_style,
         );
-        
+
         f.render_widget(Paragraph::new(progress_line), main_layout[current_idx]);
         current_idx += 1;
     }
@@ -150,7 +168,7 @@ fn render_download_gauge(f: &mut Frame, app: &App, progress: f32, status: &str, 
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(Style::default().fg(app.theme.highlight));
-    
+
     let inner_area = block.inner(area);
     f.render_widget(block, area);
 
@@ -166,12 +184,17 @@ fn render_download_gauge(f: &mut Frame, app: &App, progress: f32, status: &str, 
         let label = format!(" {} {:.0}% ", status, progress * 100.0);
         let label_span = Span::styled(
             label,
-            Style::default().fg(app.theme.fg).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(app.theme.fg)
+                .add_modifier(Modifier::BOLD),
         );
 
         // We can't easily overlay text on our custom progress line in a simple Paragraph
         // so we'll just render them as a Line if there's space.
         // Actually, let's just render the label in the first line if there's height.
-        f.render_widget(Paragraph::new(vec![Line::from(label_span), progress_line]), inner_area);
+        f.render_widget(
+            Paragraph::new(vec![Line::from(label_span), progress_line]),
+            inner_area,
+        );
     }
 }

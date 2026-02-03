@@ -1,6 +1,3 @@
-
-
-
 use crate::model::Video;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -19,7 +16,7 @@ pub struct DownloadTask {
     #[allow(dead_code)]
     pub id: String,
     pub title: String,
-    pub video: Video, // Store the full video object
+    pub video: Video,      // Store the full video object
     pub format_id: String, // Store the format ID used for download
     pub status: DownloadStatus,
     pub progress: f64, // 0.0 to 100.0
@@ -55,8 +52,7 @@ pub enum DownloadEvent {
     Finished(String),
     Error(String, String),
     Started(String, u32), // New variant for download start and PID
-    Pause(String), // New variant for pausing a download
-    Resume(String), // New variant for resuming a download
-    Canceled(String), // New variant for user-initiated cancellation
+    Pause(String),        // New variant for pausing a download
+    Resume(String),       // New variant for resuming a download
+    Canceled(String),     // New variant for user-initiated cancellation
 }
-

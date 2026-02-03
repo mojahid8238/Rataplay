@@ -1,5 +1,5 @@
-use crate::model::download::DownloadTask;
 use crate::model::Video;
+use crate::model::download::DownloadTask;
 use crossterm::event::KeyCode;
 use std::collections::HashMap;
 
@@ -7,7 +7,7 @@ use std::collections::HashMap;
 pub enum InputMode {
     Normal,
     Editing,
-    Loading, 
+    Loading,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
@@ -28,8 +28,8 @@ pub enum AppAction {
     ViewPlaylist,
     // Local Actions
     PlayLocalExternal,
-    PlayLocalTerminal, 
-    PlayLocalAudio,    
+    PlayLocalTerminal,
+    PlayLocalAudio,
     DeleteLocalFile,
     DeleteSelectedLocalFiles,
     CleanupLocalGarbage,
@@ -65,9 +65,9 @@ pub enum AppState {
 
 #[derive(Debug)]
 pub enum DownloadControl {
-    Pause(String), 
-    Resume(String), 
-    Cancel(String), 
+    Pause(String),
+    Resume(String),
+    Cancel(String),
 }
 
 pub struct DownloadManager {
