@@ -6,7 +6,7 @@
 
 ## ✨ Features
 
-- 🔍 **Instant Search**: Direct search from CLI or via the interactive TUI with live progress.
+- 🔍 **Instant Search**: Direct search from CLI or via the interactive TUI.
 - 🖼️ **Visual Excellence**: High-quality thumbnails with specialized support for Kitty and WezTerm graphics protocols.
 - 📺 **Versatile Playback**:
   - **External**: Play videos in an external `mpv` window with any prefered quality.
