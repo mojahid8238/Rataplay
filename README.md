@@ -4,6 +4,8 @@
 
 ![rataplay Demo](./assets/demo.gif)
 
+> I ran out of ideas if you have any feature suggestions please let me know.
+
 ## ✨ Features
 
 - 🔍 **Instant Search**: Direct search from CLI or via the interactive TUI.
