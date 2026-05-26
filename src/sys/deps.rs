@@ -12,7 +12,7 @@ pub fn check_dependencies(settings: &Settings) -> Result<DependencyStatus> {
     log::info!("  yt-dlp: {}", settings.ytdlp_cmd());
     log::info!("  mpv:    {}", settings.mpv_cmd());
     log::info!("  ffmpeg: {}", settings.ffmpeg_cmd());
-    log::info!("  deno:   {}", settings.deno_cmd());
+    log::info!("  js_runtime:   {}", settings.js_runtime_cmd());
 
     match &settings.cookie_mode {
         crate::model::settings::CookieMode::Off => log::info!("  cookies: disabled"),

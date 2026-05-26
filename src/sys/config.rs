@@ -42,7 +42,8 @@ pub struct Executables {
     pub mpv: Option<PathBuf>,
     pub ytdlp: Option<PathBuf>,
     pub ffmpeg: Option<PathBuf>,
-    pub deno: Option<PathBuf>,
+    #[serde(alias = "deno")]
+    pub js_runtime: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -85,7 +86,7 @@ impl Default for Executables {
             mpv: None,
             ytdlp: None,
             ffmpeg: None,
-            deno: None,
+            js_runtime: None,
         }
     }
 }
@@ -330,6 +331,15 @@ impl Config {
 
             // Skip comments or empty lines for processing (but keep them)
             if trimmed.starts_with('#') || trimmed.is_empty() {
+                if !trimmed.is_empty() && current_section == "executables" {
+                    let after_hash = trimmed.trim_start_matches('#').trim_start();
+                    if let Some((key, val)) = after_hash.split_once('=') {
+                        if key.trim() == "deno" {
+                            new_lines.push(format!("# js_runtime ={}", val));
+                            continue;
+                        }
+                    }
+                }
                 new_lines.push(line.to_string());
                 continue;
             }
@@ -392,6 +402,12 @@ impl Config {
                 } else if current_section == "executables" {
                     if key == "enabled" {
                         new_line = format!("enabled = {}", self.executables.enabled);
+                    } else if key == "js_runtime" || key == "deno" {
+                        if let Some(p) = &self.executables.js_runtime {
+                            if let Ok(val) = serde_json::to_string(&p.to_string_lossy()) {
+                                new_line = format!("js_runtime = {}", val);
+                            }
+                        }
                     }
                 } else if current_section == "cookies" {
                     if key == "enabled" {
@@ -550,13 +566,13 @@ impl Config {
         } else {
             content.push_str("# ffmpeg = \"/usr/bin/ffmpeg\"\n");
         }
-        if let Some(p) = &self.executables.deno {
+        if let Some(p) = &self.executables.js_runtime {
             content.push_str(&format!(
-                "deno = {}\n",
+                "js_runtime = {}\n",
                 serde_json::to_string(&p.to_string_lossy())?
             ));
         } else {
-            content.push_str("# deno = \"/usr/bin/deno\"\n");
+            content.push_str("# js_runtime = \"/usr/bin/deno\"\n");
         }
         content.push_str("\n");
 
@@ -587,23 +603,23 @@ impl Config {
                 content.push_str("# source.value = \"\"\n");
             }
             CookieSource::Browser(name) => {
-                content.push_str("#source.type = \"browser\"\n");
+                content.push_str("source.type = \"browser\"\n");
                 content.push_str(&format!(
-                    "#source.value = {}\n",
+                    "source.value = {}\n",
                     serde_json::to_string(name)?
                 ));
             }
             CookieSource::Netscape(path) => {
-                content.push_str("#source.type = \"netscape\"\n");
+                content.push_str("source.type = \"netscape\"\n");
                 content.push_str(&format!(
-                    "#source.value = {}\n",
+                    "source.value = {}\n",
                     serde_json::to_string(&path.to_string_lossy())?
                 ));
             }
             CookieSource::Json(path) => {
-                content.push_str("#source.type = \"json\"\n");
+                content.push_str("source.type = \"json\"\n");
                 content.push_str(&format!(
-                    "#source.value = {}\n",
+                    "source.value = {}\n",
                     serde_json::to_string(&path.to_string_lossy())?
                 ));
             }

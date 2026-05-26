@@ -14,6 +14,7 @@ pub struct Video {
     pub duration_string: String, // e.g. "10:05"
     pub thumbnail_url: Option<String>,
     pub view_count: Option<u64>,
+    pub like_count: Option<u64>,
     pub concurrent_view_count: Option<u64>,
     pub upload_date: Option<String>,
     pub playlist_count: Option<u64>,
@@ -45,6 +46,7 @@ impl Default for Video {
             duration_string: String::new(),
             thumbnail_url: None,
             view_count: None,
+            like_count: None,
             concurrent_view_count: None,
             upload_date: None,
             playlist_count: None,

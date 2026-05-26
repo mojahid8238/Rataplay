@@ -410,7 +410,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                             ]));
                         }
 
-                        if !video.is_partial {
+                        if video.upload_date.is_some() {
                             let upload_date = format_upload_date(video.upload_date.as_deref());
                             text_lines.push(Line::from(vec![
                                 Span::styled(
@@ -489,9 +489,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                             "N/A".to_string()
                         };
 
-                        let upload_str = if video.is_partial {
-                            String::new()
-                        } else if video.upload_date.is_some() {
+                        let upload_str = if video.upload_date.is_some() {
                             format_upload_date(video.upload_date.as_deref())
                         } else {
                             "Unknown".to_string()
@@ -510,7 +508,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                             format!("Views: {}", views_str),
                         ];
 
-                        if !video.is_partial {
+                        if video.upload_date.is_some() {
                             lines.push(format!("Uploaded: {}", upload_str));
                         }
 

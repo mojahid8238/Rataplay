@@ -58,7 +58,14 @@ pub fn on_tick(app: &mut App) {
                             if !app.pending_resolution_ids.is_empty() {
                                 let items: Vec<String> =
                                     app.pending_resolution_ids.drain(..).collect();
-                                let _ = app.details_tx.send(items);
+                                let n = items.len();
+                                if app.details_tx.send(items).is_err() {
+                                    app.status_message =
+                                        Some("Details: background task unavailable.".to_string());
+                                } else {
+                                    app.status_message =
+                                        Some(format!("Resolving {} video details...", n));
+                                }
                             }
                         }
                     }
@@ -76,7 +83,14 @@ pub fn on_tick(app: &mut App) {
     // Flush pending resolutions periodically (e.g. if we have >= 5 items)
     if app.pending_resolution_ids.len() >= 5 {
         let items: Vec<String> = app.pending_resolution_ids.drain(..).collect();
-        let _ = app.details_tx.send(items);
+        let n = items.len();
+        if app.details_tx.send(items).is_err() {
+            app.status_message =
+                Some("Details: background task unavailable.".to_string());
+        } else {
+            app.status_message =
+                Some(format!("Resolving {} video details...", n));
+        }
     }
 
     // Resolve details for the currently selected item if it's partial
@@ -87,7 +101,13 @@ pub fn on_tick(app: &mut App) {
                 if video.is_partial && video.video_type == crate::model::VideoType::Video {
                     if !app.pending_resolution_ids.contains(&video.url) {
                         app.pending_resolution_ids.push(video.url.clone());
-                        let _ = app.details_tx.send(vec![video.url.clone()]);
+                        if app.details_tx.send(vec![video.url.clone()]).is_err() {
+                            app.status_message =
+                                Some("Details: background task unavailable.".to_string());
+                        } else {
+                            app.status_message =
+                                Some("Resolving video details...".to_string());
+                        }
                     }
                 }
             }
@@ -95,6 +115,7 @@ pub fn on_tick(app: &mut App) {
     }
 
     // Apply resolved details
+    let mut resolved_any = false;
     while let Ok(res) = app.details_rx.try_recv() {
         match res {
             Ok(v) => {
@@ -105,14 +126,19 @@ pub fn on_tick(app: &mut App) {
                 }
                 // Remove from pending
                 app.pending_resolution_ids.retain(|x| x != &url);
+                resolved_any = true;
 
                 // Trigger image request for selection again if needed
                 request_image_for_selection(app);
             }
             Err(e) => {
                 app.status_message = Some(format!("Details error: {}", e));
+                resolved_any = true;
             }
         }
+    }
+    if resolved_any && app.pending_resolution_ids.is_empty() {
+        app.status_message = Some("Details updated.".to_string());
     }
 
     // Check for formats

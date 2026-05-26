@@ -88,7 +88,7 @@ pub fn render_settings_menu(f: &mut Frame, app: &mut App, area: Rect) {
                         let has_custom_paths = app.settings.mpv_path != "mpv"
                             || app.settings.ytdlp_path != "yt-dlp"
                             || app.settings.ffmpeg_path != "ffmpeg"
-                            || app.settings.deno_path != "deno";
+                            || app.settings.js_runtime_path != "deno";
 
                         if has_custom_paths {
                             "On".to_string()

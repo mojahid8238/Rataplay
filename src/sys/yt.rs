@@ -3,6 +3,7 @@ use crate::model::{Video, VideoFormat};
 use crate::sys::cookies;
 use anyhow::{Context, Result};
 use serde_json::Value;
+use std::path::Path;
 use std::process::Stdio;
 use tokio::process::Command;
 
@@ -34,7 +35,28 @@ pub fn build_base_command(settings: &Settings) -> Command {
             log::info!("Using cookies from browser: {}", browser);
             cmd.arg("--cookies-from-browser").arg(browser);
         }
-        CookieMode::Off | CookieMode::Unsetted => {}
+        CookieMode::Off => {}
+        CookieMode::Unsetted => {
+            if let Some(browser) = &settings.browser_name {
+                log::info!("Using cookies from browser (fallback): {}", browser);
+                cmd.arg("--cookies-from-browser").arg(browser);
+            } else if let Some(path) = &settings.cookie_file {
+                log::info!("Using cookies from file (fallback): {:?}", path);
+                cmd.arg("--cookies").arg(path);
+            } else {
+                log::warn!("Cookies enabled but no source configured");
+            }
+        }
+    }
+
+    if settings.use_custom_paths {
+        let path = settings.js_runtime_cmd();
+        let name = Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("deno");
+        log::info!("Using JS runtime: {}:{}", name, path);
+        cmd.arg("--js-runtimes").arg(format!("{}:{}", name, path));
     }
 
     if settings.ffmpeg_cmd() != "ffmpeg" {

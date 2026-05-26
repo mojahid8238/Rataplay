@@ -222,8 +222,8 @@ impl App {
                 } else {
                     None
                 },
-                deno: if self.settings.deno_path != "deno" {
-                    Some(std::path::PathBuf::from(&self.settings.deno_path))
+                js_runtime: if self.settings.js_runtime_path != "deno" {
+                    Some(std::path::PathBuf::from(&self.settings.js_runtime_path))
                 } else {
                     None
                 },

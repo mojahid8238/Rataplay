@@ -11,7 +11,7 @@ pub struct Settings {
     pub mpv_path: String,
     pub ytdlp_path: String,
     pub ffmpeg_path: String,
-    pub deno_path: String,
+    pub js_runtime_path: String,
 
     pub download_directory: String,
 
@@ -39,7 +39,7 @@ impl Default for Settings {
             mpv_path: "mpv".to_string(),
             ytdlp_path: "yt-dlp".to_string(),
             ffmpeg_path: "ffmpeg".to_string(),
-            deno_path: "deno".to_string(),
+            js_runtime_path: "deno".to_string(),
             download_directory: ".".to_string(),
             cookie_file: None,
             browser_name: None,
@@ -70,8 +70,8 @@ impl Settings {
         if let Some(p) = config.executables.ffmpeg {
             settings.ffmpeg_path = Config::expand_tilde(&p).to_string_lossy().to_string();
         }
-        if let Some(p) = config.executables.deno {
-            settings.deno_path = Config::expand_tilde(&p).to_string_lossy().to_string();
+        if let Some(p) = config.executables.js_runtime {
+            settings.js_runtime_path = Config::expand_tilde(&p).to_string_lossy().to_string();
         }
 
         // Set current operational mode and populate details
@@ -136,9 +136,9 @@ impl Settings {
             "ffmpeg"
         }
     }
-    pub fn deno_cmd(&self) -> &str {
+    pub fn js_runtime_cmd(&self) -> &str {
         if self.use_custom_paths {
-            &self.deno_path
+            &self.js_runtime_path
         } else {
             "deno"
         }
