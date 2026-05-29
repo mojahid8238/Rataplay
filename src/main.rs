@@ -291,6 +291,7 @@ async fn main() -> Result<()> {
 
                                 tokio::spawn(sys::mpv_ipc::spawn_ipc_handler(socket_path, rx, res_tx));
 
+                                app.playback_is_audio = false;
                                 app.playback_cmd_tx = Some(tx);
                                 app.playback_process = Some(child);
                                 app.playback_title = Some(title);
@@ -319,6 +320,7 @@ async fn main() -> Result<()> {
 
                                 tokio::spawn(sys::mpv_ipc::spawn_ipc_handler(socket_path, rx, res_tx));
 
+                                app.playback_is_audio = true;
                                 app.playback_cmd_tx = Some(tx);
                                 app.playback_process = Some(child);
                                 app.playback_title = Some(title);

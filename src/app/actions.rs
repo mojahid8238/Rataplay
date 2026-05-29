@@ -421,6 +421,7 @@ pub fn stop_playback(app: &mut App) {
     app.playback_total = 0.0;
     app.playback_duration_str = None;
     app.is_paused = false;
+    app.playback_is_audio = false;
     app.is_finishing = false;
     app.terminal_loading = false;
     app.terminal_loading_error = None;

@@ -128,6 +128,7 @@ pub struct App {
     pub terminal_loading_error: Option<String>,
     pub terminal_ready_tx: UnboundedSender<Result<String, String>>,
     pub terminal_ready_rx: UnboundedReceiver<Result<String, String>>,
+    pub playback_is_audio: bool,
 
     // Details Resolution
     pub details_tx: UnboundedSender<Vec<String>>,
@@ -775,6 +776,7 @@ impl App {
             terminal_ready_url: None,
             terminal_ready_tx,
             terminal_ready_rx,
+            playback_is_audio: false,
             details_tx,
             details_rx,
             pending_resolution_ids: Vec::new(),
