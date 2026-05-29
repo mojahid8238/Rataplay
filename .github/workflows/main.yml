@@ -19,7 +19,7 @@ jobs:
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libdbus-1-dev libasound2-dev pkg-config
+          sudo apt-get install -y libdbus-1-dev libasound2-dev pkg-config dpkg-dev rpm
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -30,13 +30,28 @@ jobs:
       - name: Build Binary
         run: cargo build --release --locked
 
-      - name: Prepare Binary
-        run: mv target/release/rataplay ./rataplay
+      - name: Install Packaging Tools
+        run: |
+          cargo install cargo-deb cargo-generate-rpm
+
+      - name: Build .deb Package
+        run: cargo deb --locked
+
+      - name: Build .rpm Package
+        run: cargo generate-rpm --locked
+
+      - name: Prepare Artifacts
+        run: |
+          mkdir -p artifacts
+          cp target/release/rataplay artifacts/
+          cp target/debian/*.deb artifacts/ || true
+          cp target/generate-rpm/*.rpm artifacts/ || true
 
       - name: Create or Update Release
         uses: softprops/action-gh-release@v2
         with:
-          files: rataplay
+          files: |
+            artifacts/*
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -2,6 +2,14 @@
 name = "rataplay"
 version = "1.4.1"
 edition = "2024"
+description = "A high-performance Rust TUI for YouTube playback and management"
+license = "GPL-3.0-only"
+homepage = "https://github.com/mojahid8238/Rataplay"
+repository = "https://github.com/mojahid8238/Rataplay"
+readme = "README.md"
+categories = ["multimedia", "terminal-ui"]
+keywords = ["youtube", "tui", "mpv", "yt-dlp", "media"]
+authors = ["Mojahid <mi8238229@gmail.com>"]
 
 [dependencies]
 tokio = { version = "1.43.0", features = ["rt-multi-thread", "macros", "sync", "time", "process", "io-util", "net", "fs", "signal"] }
@@ -31,5 +39,20 @@ lto = true
 codegen-units = 16
 panic = "abort"
 strip = true
+
+[package.metadata.deb]
+maintainer = "Mojahid <mi8238229@gmail.com>"
+depends = "mpv, yt-dlp"
+extended-description = """A high-performance Terminal User Interface for searching, playing, and downloading YouTube videos. Powered by mpv and yt-dlp."""
+section = "video"
+priority = "optional"
+generate-shlibdeps = true
+
+[package.metadata.generate-rpm]
+requires = ["mpv", "yt-dlp"]
+description-file = "README.md"
+assets = [
+    { source = "target/release/rataplay", dest = "usr/bin/rataplay", mode = "755" },
+]
 
 
