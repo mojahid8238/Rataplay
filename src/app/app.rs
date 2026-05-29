@@ -496,7 +496,7 @@ impl App {
                     res = new_download_cmd_rx.recv() => {
                         if let Some((video, format_id)) = res {
                             let event_tx = download_event_tx.clone();
-                            let video_id = video.id.clone();
+                            let composite_key = crate::model::download::download_task_key(&video.id, &format_id);
 
                             let current_settings = task_settings.read().unwrap().clone();
                             let resolved_download_dir = local::resolve_path(&current_settings.download_directory)
@@ -506,20 +506,20 @@ impl App {
                             let mut child = match crate::sys::download::start_download(&video, &format_id, &resolved_download_dir, &current_settings).await {
                                 Ok(child) => child,
                                 Err(e) => {
-                                    log::error!("Failed to start download for video {}: {}", video_id, e);
-                                    let _ = event_tx.send(crate::model::download::DownloadEvent::Error(video_id.clone(), e.to_string()));
+                                    log::error!("Failed to start download for {}: {}", composite_key, e);
+                                    let _ = event_tx.send(crate::model::download::DownloadEvent::Error(composite_key.clone(), e.to_string()));
                                     continue;
                                 }
                             };
                             let pid = child.id().expect("Failed to get child process ID");
-                            let _ = event_tx.send(crate::model::download::DownloadEvent::Started(video_id.clone(), pid));
+                            let _ = event_tx.send(crate::model::download::DownloadEvent::Started(composite_key.clone(), pid));
 
-                            active_downloads_pids.insert(video_id.clone(), pid);
+                            active_downloads_pids.insert(composite_key.clone(), pid);
 
                             // Spawn a separate task to monitor this specific download's stdout/stderr and status
                             let monitor_event_tx = event_tx.clone();
                             let monitor_active_handles = task_active_handles.clone();
-                            let v_id = video_id.clone();
+                            let v_id = composite_key.clone();
                             let monitor_task = tokio::spawn(async move {
                                 let stdout = child
                                     .stdout
@@ -532,7 +532,7 @@ impl App {
 
                                 let mut stdout_reader = BufReader::new(stdout).lines();
                                 let mut stderr_reader = BufReader::new(stderr).lines();
-                                log::debug!("Monitoring download for video: {}", v_id);
+                                log::debug!("Monitoring download for: {}", v_id);
 
                                 let mut last_progress_update = Instant::now();
                                 let min_update_interval = Duration::from_millis(500);
@@ -554,7 +554,7 @@ impl App {
                                                     last_progress_update = Instant::now();
                                                 }
                                             } else {
-                                                // eprintln!("yt-dlp stdout for {}: {}", video_id, line);
+                                                // eprintln!("yt-dlp stdout for {}: {}", v_id, line);
                                             }
                                         }
                                         Ok(Some(line)) = stderr_reader.next_line() => {
@@ -564,14 +564,14 @@ impl App {
                                             match status {
                                                 Ok(exit_status) => {
                                                     if exit_status.success() {
-                                                        log::info!("Download finished successfully for video: {}", v_id);
+                                                        log::info!("Download finished successfully for: {}", v_id);
                                                         let _ = monitor_event_tx.send(crate::model::download::DownloadEvent::Finished(v_id.clone()));
                                                     } else {
-                                                        log::error!("Download failed for video {}: exit code {:?}", v_id, exit_status.code());
+                                                        log::error!("Download failed for {}: exit code {:?}", v_id, exit_status.code());
                                                         let _ = monitor_event_tx.send(crate::model::download::DownloadEvent::Error(
                                                             v_id.clone(),
                                                             format!("Download failed with exit code: {:?}", exit_status.code()),
-                                                        ));
+                                                ));
                                                     }
                                                 }
                                                 Err(e) => {
@@ -594,7 +594,7 @@ impl App {
                             });
 
                             if let Ok(mut w) = task_active_handles.write() {
-                                w.insert(video_id, monitor_task.abort_handle());
+                                w.insert(composite_key, monitor_task.abort_handle());
                             }
                         } else {
                             break;
@@ -664,8 +664,8 @@ impl App {
         // Scan for download tasks (incomplete or finished/recoverable)
         let scanned_tasks = local::scan_download_tasks(download_path);
         for (video, format_id, status, path) in scanned_tasks {
-            let id = video.id.clone();
-            if !download_manager.tasks.contains_key(&id) {
+            let key = crate::model::download::download_task_key(&video.id, &format_id);
+            if !download_manager.tasks.contains_key(&key) {
                 let mut task = crate::model::download::DownloadTask::new(video.clone(), format_id);
                 task.status = status;
                 task.info_json_path = Some(path);
@@ -675,8 +675,8 @@ impl App {
                     task.total_size = "Cached".to_string();
                 }
 
-                download_manager.tasks.insert(id.clone(), task);
-                download_manager.task_order.push(id);
+                download_manager.tasks.insert(key.clone(), task);
+                download_manager.task_order.push(key);
             }
         }
 

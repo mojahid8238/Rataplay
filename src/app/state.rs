@@ -92,8 +92,9 @@ impl DownloadManager {
     }
 
     pub fn add_task(&mut self, video: &Video, format_id: &str) {
+        let key = crate::model::download::download_task_key(&video.id, format_id);
         let task = DownloadTask::new(video.clone(), format_id.to_string());
-        self.tasks.insert(video.id.clone(), task);
-        self.task_order.push(video.id.clone());
+        self.tasks.insert(key.clone(), task);
+        self.task_order.push(key);
     }
 }

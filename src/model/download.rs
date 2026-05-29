@@ -27,10 +27,14 @@ pub struct DownloadTask {
     pub info_json_path: Option<std::path::PathBuf>,
 }
 
+pub fn download_task_key(video_id: &str, format_id: &str) -> String {
+    format!("{}__{}", video_id, format_id)
+}
+
 impl DownloadTask {
     pub fn new(video: Video, format_id: String) -> Self {
         Self {
-            id: video.id.clone(),
+            id: download_task_key(&video.id, &format_id),
             title: video.title.clone(),
             video,
             format_id,
