@@ -38,7 +38,7 @@ jobs:
         run: cargo deb --locked
 
       - name: Build .rpm Package
-        run: cargo generate-rpm --locked
+        run: cargo generate-rpm
 
       - name: Prepare Artifacts
         run: |
