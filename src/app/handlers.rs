@@ -1,7 +1,7 @@
 use super::actions;
 use super::updates;
 use super::{App, AppAction, AppState, DownloadControl, InputMode};
-use crate::model::Video;
+use crate::app::state::DownloadDialogMode;
 use crate::sys::local;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use std::time::{Duration, Instant};
@@ -55,6 +55,34 @@ pub fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                     } else {
                         // Click outside -> back to action menu?
                         // Esc does this, so let's match it.
+                        app.state = AppState::ActionMenu;
+                    }
+                }
+                return;
+            }
+
+            if app.state == AppState::DownloadDialog {
+                if let Some(area) = app.download_dialog_area {
+                    if is_in_rect(x, y, area) {
+                        let item_count = match app.download_dialog_mode {
+                            DownloadDialogMode::Single => 3,
+                            DownloadDialogMode::BulkSelected | DownloadDialogMode::BulkAll => 2,
+                        };
+                        let header_height = 2;
+                        let list_start_y = area.y + 1 + header_height;
+                        if y >= list_start_y {
+                            let relative_y = y - list_start_y;
+                            if (relative_y as usize) < item_count {
+                                app.download_dialog_index = relative_y as usize;
+                                if double_click {
+                                    handle_key_event(
+                                        app,
+                                        KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
+                                    );
+                                }
+                            }
+                        }
+                    } else {
                         app.state = AppState::ActionMenu;
                     }
                 }
@@ -378,20 +406,20 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                     }
                                     crate::tui::components::settings::SettingItem::EnableLogging => {
                                         app.settings.enable_logging = !app.settings.enable_logging;
-                                        
+
                                         let log_path = match crate::sys::config::Config::load() {
                                             Ok(config) => config.get_log_path()
                                                 .map(|p| p.to_string_lossy().to_string())
                                                 .unwrap_or_else(|_| "Unknown".to_string()),
                                             Err(_) => "Unknown".to_string(),
                                         };
-                                        
+
                                         app.status_message = Some(format!(
-                                            "Logging {}. Path: {}", 
+                                            "Logging {}. Path: {}",
                                             if app.settings.enable_logging { "Enabled" } else { "Disabled" },
                                             log_path
                                         ));
-                                        
+
                                         app.save_config();
                                         app.reload_config();
                                     }
@@ -672,6 +700,96 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                     }
                     _ => {}
                 },
+                AppState::DownloadDialog => {
+                    let item_count: usize = match app.download_dialog_mode {
+                        DownloadDialogMode::Single => 3,
+                        DownloadDialogMode::BulkSelected | DownloadDialogMode::BulkAll => 2,
+                    };
+
+                    match code {
+                        KeyCode::Esc | KeyCode::Char('q') => {
+                            app.state = AppState::ActionMenu;
+                        }
+                        KeyCode::Up | KeyCode::Char('k') => {
+                            if app.download_dialog_index > 0 {
+                                app.download_dialog_index -= 1;
+                            }
+                        }
+                        KeyCode::Down | KeyCode::Char('j') => {
+                            if app.download_dialog_index < item_count.saturating_sub(1) {
+                                app.download_dialog_index += 1;
+                            }
+                        }
+                        KeyCode::Enter => {
+                            let format_id = match app.download_dialog_index {
+                                0 => "best",       // Video
+                                1 => "audio_best", // Audio
+                                _ => "",
+                            };
+
+                            match app.download_dialog_mode {
+                                DownloadDialogMode::Single => {
+                                    if app.download_dialog_index == 2 {
+                                        // "Select Format..." — proceed with format selection
+                                        if let Some(video) = app.action_video.clone() {
+                                            let url = video.url;
+                                            let _ = app.format_tx.send(url);
+                                            app.input_mode = InputMode::Loading;
+                                            app.status_message =
+                                                Some("Fetching formats...".to_string());
+                                            app.format_selection_mode =
+                                                crate::app::state::FormatSelectionMode::Download;
+                                        }
+                                    } else if let Some(video) = app.action_video.clone() {
+                                        app.download_manager.add_task(&video, format_id);
+                                        let _ = app
+                                            .new_download_tx
+                                            .send((video.clone(), format_id.to_string()));
+                                        app.status_message =
+                                            Some("Download started...".to_string());
+                                        app.action_video = None;
+                                        app.state = app.previous_app_state;
+                                    }
+                                }
+                                DownloadDialogMode::BulkSelected => {
+                                    let selected_videos: Vec<crate::model::Video> = app
+                                        .selected_playlist_indices
+                                        .iter()
+                                        .filter_map(|&idx| app.search_results.get(idx).cloned())
+                                        .collect();
+
+                                    if selected_videos.is_empty() {
+                                        app.status_message =
+                                            Some("No videos selected.".to_string());
+                                    } else {
+                                        for video in selected_videos {
+                                            app.download_manager.add_task(&video, format_id);
+                                            let _ = app
+                                                .new_download_tx
+                                                .send((video, format_id.to_string()));
+                                        }
+                                        app.status_message =
+                                            Some("Starting downloads...".to_string());
+                                    }
+                                    app.state = app.previous_app_state;
+                                }
+                                DownloadDialogMode::BulkAll => {
+                                    let videos: Vec<crate::model::Video> =
+                                        app.search_results.iter().cloned().collect();
+                                    for video in videos {
+                                        app.download_manager.add_task(&video, format_id);
+                                        let _ = app
+                                            .new_download_tx
+                                            .send((video, format_id.to_string()));
+                                    }
+                                    app.status_message = Some("Starting downloads...".to_string());
+                                    app.state = app.previous_app_state;
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
                 AppState::ActionMenu => {
                     if code == KeyCode::Esc || code == KeyCode::Char('q') {
                         app.state = app.previous_app_state;
@@ -999,12 +1117,9 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                             return;
                                         }
                                         AppAction::Download => {
-                                            let _ = app.format_tx.send(url);
-                                            app.input_mode = InputMode::Loading;
-                                            app.status_message =
-                                                Some("Fetching formats...".to_string());
-                                            app.format_selection_mode =
-                                                crate::app::state::FormatSelectionMode::Download;
+                                            app.download_dialog_mode = DownloadDialogMode::Single;
+                                            app.download_dialog_index = 0;
+                                            app.state = AppState::DownloadDialog;
                                         }
                                         AppAction::WatchExternal => {
                                             // Start Format Selection instead of direct play
@@ -1022,45 +1137,21 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                             app.state = app.previous_app_state;
                                         }
                                         AppAction::DownloadSelected => {
-                                            let selected_videos: Vec<Video> = app
-                                                .selected_playlist_indices
-                                                .iter()
-                                                .filter_map(|&idx| {
-                                                    app.search_results.get(idx).cloned()
-                                                })
-                                                .collect();
-
-                                            if selected_videos.is_empty() {
+                                            if app.selected_playlist_indices.is_empty() {
                                                 app.status_message =
                                                     Some("No videos selected.".to_string());
-                                            } else {
-                                                for video in selected_videos {
-                                                    app.download_manager.add_task(&video, "best");
-                                                    let _ = app
-                                                        .new_download_tx
-                                                        .send((video, "best".to_string()));
-                                                }
-                                                app.status_message =
-                                                    Some("Starting downloads...".to_string());
                                                 app.state = app.previous_app_state;
+                                            } else {
+                                                app.download_dialog_mode =
+                                                    DownloadDialogMode::BulkSelected;
+                                                app.download_dialog_index = 0;
+                                                app.state = AppState::DownloadDialog;
                                             }
                                         }
                                         AppAction::DownloadPlaylist => {
-                                            if let Some(_parent_url) = &video.parent_playlist_url {
-                                                app.status_message = Some("Playlist download from this context is not fully implemented. Downloading current view.".to_string());
-                                            }
-                                            let videos: Vec<Video> =
-                                                app.search_results.iter().cloned().collect();
-                                            for video in videos {
-                                                app.download_manager.add_task(&video, "best");
-                                                let _ = app
-                                                    .new_download_tx
-                                                    .send((video, "best".to_string()));
-                                            }
-                                            app.status_message =
-                                                Some("Starting playlist download...".to_string());
-
-                                            app.state = app.previous_app_state;
+                                            app.download_dialog_mode = DownloadDialogMode::BulkAll;
+                                            app.download_dialog_index = 0;
+                                            app.state = AppState::DownloadDialog;
                                         }
                                         AppAction::CopyUrlOrId => {
                                             let text_to_copy =

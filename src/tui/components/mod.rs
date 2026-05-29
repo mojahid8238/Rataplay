@@ -1,4 +1,5 @@
 pub mod action_menu;
+pub mod download_dialog;
 pub mod downloads;
 pub mod format_selection;
 pub mod logo;

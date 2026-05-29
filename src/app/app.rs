@@ -14,6 +14,7 @@ use crate::tui::components::logo::AnimationMode;
 use crate::tui::components::theme::Theme;
 
 use super::{AppAction, AppState, DownloadControl, DownloadManager, InputMode};
+use crate::app::state::DownloadDialogMode;
 use crate::model::settings::Settings;
 
 pub struct App {
@@ -95,6 +96,10 @@ pub struct App {
     pub action_video: Option<Video>,
     pub selected_format_index: Option<usize>,
     pub format_selection_mode: crate::app::state::FormatSelectionMode,
+    // Download Format Dialog
+    pub download_dialog_mode: DownloadDialogMode,
+    pub download_dialog_index: usize,
+    pub download_dialog_area: Option<Rect>,
     // Background Download
     pub download_manager: DownloadManager,
     pub new_download_tx: UnboundedSender<(Video, String)>, // Video, FormatID
@@ -743,6 +748,9 @@ impl App {
             action_video: None,
             selected_format_index: None,
             format_selection_mode: crate::app::state::FormatSelectionMode::default(),
+            download_dialog_mode: crate::app::state::DownloadDialogMode::Single,
+            download_dialog_index: 0,
+            download_dialog_area: None,
             download_manager,
             new_download_tx,
             download_event_rx,

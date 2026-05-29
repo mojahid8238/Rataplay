@@ -18,6 +18,13 @@ pub enum FormatSelectionMode {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum DownloadDialogMode {
+    Single,
+    BulkSelected,
+    BulkAll,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum AppAction {
     WatchExternal,
     WatchInTerminal,
@@ -61,6 +68,7 @@ pub enum AppState {
     FormatSelection,
     Downloads,
     Settings,
+    DownloadDialog,
 }
 
 #[derive(Debug)]

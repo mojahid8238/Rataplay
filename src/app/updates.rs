@@ -85,11 +85,9 @@ pub fn on_tick(app: &mut App) {
         let items: Vec<String> = app.pending_resolution_ids.drain(..).collect();
         let n = items.len();
         if app.details_tx.send(items).is_err() {
-            app.status_message =
-                Some("Details: background task unavailable.".to_string());
+            app.status_message = Some("Details: background task unavailable.".to_string());
         } else {
-            app.status_message =
-                Some(format!("Resolving {} video details...", n));
+            app.status_message = Some(format!("Resolving {} video details...", n));
         }
     }
 
@@ -105,8 +103,7 @@ pub fn on_tick(app: &mut App) {
                             app.status_message =
                                 Some("Details: background task unavailable.".to_string());
                         } else {
-                            app.status_message =
-                                Some("Resolving video details...".to_string());
+                            app.status_message = Some("Resolving video details...".to_string());
                         }
                     }
                 }

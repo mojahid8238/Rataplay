@@ -367,11 +367,11 @@ async fn main() -> Result<()> {
                     if !cfg!(windows) {
                         let _ = std::fs::remove_file(&socket_path);
                     }
-                    
+
                     // We need a separate task to write to the socket because the main loop is blocked here
                     // waiting for the child process.
                     let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-                    
+
                     // Spawn IPC writer task
                     let writer_handle = tokio::spawn(sys::mpv_ipc::spawn_ipc_writer(socket_path.clone(), cmd_rx));
 
@@ -380,7 +380,7 @@ async fn main() -> Result<()> {
                         tokio::select! {
                             // Check if child exited
                             status = child.wait() => {
-                                let _ = status; 
+                                let _ = status;
                                 break;
                             }
                             // Handle media events
@@ -415,7 +415,7 @@ async fn main() -> Result<()> {
                             }
                         }
                     }
-                    
+
                     // Cleanup
                     writer_handle.abort();
                     if !cfg!(windows) {

@@ -54,6 +54,8 @@ pub async fn start_download(
     cmd.kill_on_drop(true);
     let format_arg = if format_id == "best" {
         "bestvideo+bestaudio/best".to_string()
+    } else if format_id == "audio_best" {
+        "bestaudio[ext=m4a]/bestaudio/best".to_string()
     } else {
         format!("{}+bestaudio/best", format_id)
     };
