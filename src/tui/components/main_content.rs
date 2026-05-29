@@ -408,31 +408,54 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                 ),
                                 Span::styled(views_fmt, Style::default().fg(app.theme.fg)),
                             ]));
-                        }
 
-                        if video.upload_date.is_some() {
-                            let upload_date = format_upload_date(video.upload_date.as_deref());
+                            let likes_str = if let Some(likes) = video.like_count {
+                                if likes > 1_000_000 {
+                                    format!("{:.1}M", likes as f64 / 1_000_000.0)
+                                } else if likes > 1_000 {
+                                    format!("{:.1}K", likes as f64 / 1_000.0)
+                                } else {
+                                    likes.to_string()
+                                }
+                            } else {
+                                "...".to_string()
+                            };
                             text_lines.push(Line::from(vec![
                                 Span::styled(
-                                    "Uploaded: ",
+                                    "Likes: ",
                                     Style::default()
                                         .fg(app.theme.accent)
                                         .add_modifier(Modifier::BOLD),
                                 ),
-                                Span::styled(upload_date, Style::default().fg(app.theme.fg)),
+                                Span::styled(likes_str, Style::default().fg(app.theme.fg)),
                             ]));
-                            text_lines.push(Line::from(""));
-                            if let Some(playlist_title) = &video.parent_playlist_title {
-                                text_lines.push(Line::from(vec![
-                                    Span::styled(
-                                        "From Playlist: ",
-                                        Style::default()
-                                            .fg(app.theme.accent)
-                                            .add_modifier(Modifier::BOLD),
-                                    ),
-                                    Span::styled(playlist_title, Style::default().fg(app.theme.fg)),
-                                ]));
-                            }
+                        }
+
+                        let upload_date = if let Some(d) = &video.upload_date {
+                            format_upload_date(Some(d.as_str()))
+                        } else {
+                            "...".to_string()
+                        };
+                        text_lines.push(Line::from(vec![
+                            Span::styled(
+                                "Uploaded: ",
+                                Style::default()
+                                    .fg(app.theme.accent)
+                                    .add_modifier(Modifier::BOLD),
+                            ),
+                            Span::styled(upload_date, Style::default().fg(app.theme.fg)),
+                        ]));
+                        text_lines.push(Line::from(""));
+                        if let Some(playlist_title) = &video.parent_playlist_title {
+                            text_lines.push(Line::from(vec![
+                                Span::styled(
+                                    "From Playlist: ",
+                                    Style::default()
+                                        .fg(app.theme.accent)
+                                        .add_modifier(Modifier::BOLD),
+                                ),
+                                Span::styled(playlist_title, Style::default().fg(app.theme.fg)),
+                            ]));
                         }
 
                         if let Some(live_status_str) = &video.live_status {
@@ -489,12 +512,6 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                             "N/A".to_string()
                         };
 
-                        let upload_str = if video.upload_date.is_some() {
-                            format_upload_date(video.upload_date.as_deref())
-                        } else {
-                            "Unknown".to_string()
-                        };
-
                         let status_msg = if video.is_partial {
                             "(Fetching Details...)"
                         } else {
@@ -508,9 +525,25 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                             format!("Views: {}", views_str),
                         ];
 
-                        if video.upload_date.is_some() {
-                            lines.push(format!("Uploaded: {}", upload_str));
-                        }
+                        let likes_str = if let Some(likes) = video.like_count {
+                            if likes > 1_000_000 {
+                                format!("{:.1}M", likes as f64 / 1_000_000.0)
+                            } else if likes > 1_000 {
+                                format!("{:.1}K", likes as f64 / 1_000.0)
+                            } else {
+                                likes.to_string()
+                            }
+                        } else {
+                            "...".to_string()
+                        };
+                        lines.push(format!("Likes: {}", likes_str));
+
+                        let upload_str = if let Some(d) = &video.upload_date {
+                            format_upload_date(Some(d.as_str()))
+                        } else {
+                            "...".to_string()
+                        };
+                        lines.push(format!("Uploaded: {}", upload_str));
 
                         lines.push(String::new());
                         lines.push(status_msg.to_string());

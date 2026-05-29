@@ -363,6 +363,8 @@ pub async fn search_videos_flat(
                     (None, None, None)
                 };
 
+            let like_count = val["like_count"].as_u64();
+
             let video = Video {
                 id,
                 title,
@@ -372,6 +374,7 @@ pub async fn search_videos_flat(
                 duration_string,
                 thumbnail_url: thumbnail,
                 view_count,
+                like_count,
                 concurrent_view_count,
                 upload_date,
                 playlist_count,
@@ -471,6 +474,7 @@ pub async fn resolve_video_details(
             let duration = val["duration"].as_f64().unwrap_or(0.0);
             let thumbnail = val["thumbnail"].as_str().map(|s| s.to_string());
             let view_count = val["view_count"].as_u64();
+            let like_count = val["like_count"].as_u64();
             let concurrent_view_count = val["concurrent_view_count"].as_u64();
             let upload_date = val["upload_date"].as_str().map(|s| s.to_string());
 
@@ -509,6 +513,7 @@ pub async fn resolve_video_details(
                 duration_string,
                 thumbnail_url: thumbnail,
                 view_count,
+                like_count,
                 concurrent_view_count,
                 upload_date,
                 playlist_count: None,
