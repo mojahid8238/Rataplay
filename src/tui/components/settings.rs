@@ -46,7 +46,7 @@ impl SettingItem {
             Self::EnableLogging => "Enable Logging",
             Self::UseCustomPaths => "Use Custom Paths",
             Self::CookieMode => "Cookie Mode",
-            Self::ProgressStyle => "Progress Bar Style",
+            Self::ProgressStyle => "Progress Bar Char",
         }
     }
 }

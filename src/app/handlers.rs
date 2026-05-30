@@ -1466,7 +1466,10 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                     }
                 }
                 KeyCode::Left => {
-                    if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+                    if control {
+                        move_word_left(app);
+                    } else if app.state == AppState::Settings && app.settings_editing_item.is_some()
+                    {
                         if app.settings_cursor_position > 0 {
                             let mut prev_char_idx = 0;
                             for (idx, _) in app.settings_input.char_indices() {
@@ -1489,7 +1492,10 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                     }
                 }
                 KeyCode::Right => {
-                    if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+                    if control {
+                        move_word_right(app);
+                    } else if app.state == AppState::Settings && app.settings_editing_item.is_some()
+                    {
                         if app.settings_cursor_position < app.settings_input.len() {
                             if let Some((_idx, c)) = app.settings_input
                                 [app.settings_cursor_position..]
@@ -1597,5 +1603,113 @@ fn delete_word_backwards(app: &mut App) {
 
         app.search_query.drain(start_idx..app.cursor_position);
         app.cursor_position = start_idx;
+    }
+}
+
+fn move_word_left(app: &mut App) {
+    if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+        if app.settings_cursor_position == 0 {
+            return;
+        }
+
+        let mut chars = app.settings_input[..app.settings_cursor_position]
+            .char_indices()
+            .rev()
+            .peekable();
+
+        while let Some((_, c)) = chars.peek() {
+            if c.is_whitespace() {
+                chars.next();
+            } else {
+                break;
+            }
+        }
+
+        while let Some((_, c)) = chars.peek() {
+            if !c.is_whitespace() {
+                chars.next();
+            } else {
+                break;
+            }
+        }
+
+        app.settings_cursor_position = chars.next().map(|(i, _)| i + 1).unwrap_or(0);
+    } else {
+        if app.cursor_position == 0 {
+            return;
+        }
+
+        let mut chars = app.search_query[..app.cursor_position]
+            .char_indices()
+            .rev()
+            .peekable();
+
+        while let Some((_, c)) = chars.peek() {
+            if c.is_whitespace() {
+                chars.next();
+            } else {
+                break;
+            }
+        }
+
+        while let Some((_, c)) = chars.peek() {
+            if !c.is_whitespace() {
+                chars.next();
+            } else {
+                break;
+            }
+        }
+
+        app.cursor_position = chars.next().map(|(i, _)| i + 1).unwrap_or(0);
+    }
+}
+
+fn move_word_right(app: &mut App) {
+    if app.state == AppState::Settings && app.settings_editing_item.is_some() {
+        if app.settings_cursor_position >= app.settings_input.len() {
+            return;
+        }
+
+        let mut pos = app.settings_cursor_position;
+        let mut chars = app.settings_input[pos..].char_indices();
+
+        while let Some((_, c)) = chars.next() {
+            pos += c.len_utf8();
+            if !c.is_whitespace() {
+                break;
+            }
+        }
+
+        while let Some((_, c)) = chars.next() {
+            pos += c.len_utf8();
+            if c.is_whitespace() {
+                break;
+            }
+        }
+
+        app.settings_cursor_position = pos;
+    } else {
+        if app.cursor_position >= app.search_query.len() {
+            return;
+        }
+
+        let mut pos = app.cursor_position;
+        let mut chars = app.search_query[pos..].char_indices();
+
+        while let Some((_, c)) = chars.next() {
+            pos += c.len_utf8();
+            if !c.is_whitespace() {
+                break;
+            }
+        }
+
+        while let Some((_, c)) = chars.next() {
+            pos += c.len_utf8();
+            if c.is_whitespace() {
+                break;
+            }
+        }
+
+        app.cursor_position = pos;
     }
 }
