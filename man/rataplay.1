@@ -1,0 +1,389 @@
+.TH RATAPLAY 1 "May 2026" "rataplay 1.5.0" "User Commands"
+.SH NAME
+rataplay \- Terminal YouTube Search & Play
+.SH SYNOPSIS
+.B rataplay
+[\fIquery\fR]
+[\fB\-v\fR|\fB\-\-version\fR]
+.SH DESCRIPTION
+.B Rataplay
+is a high-performance terminal user interface for searching, playing, and
+downloading YouTube videos. It uses
+.B mpv
+for playback and
+.B yt\-dlp
+for metadata extraction, searching, and downloading.
+
+If a
+.I query
+is provided on the command line, it is executed as a search on startup.
+.I query
+can be a search term or a YouTube URL (video, playlist, or channel).
+.SH OPTIONS
+.TP
+.BI query
+Search query or YouTube URL to open on startup.
+.TP
+.B \-v , \-\-version
+Print the version and exit.
+.TP
+.B \-h , \-\-help
+Print help information and exit.
+.SH KEYBINDINGS
+.SS Navigation
+.TP
+.B s , /
+Focus the search bar (enter editing mode).
+.TP
+.B j , Down
+Move selection down.
+.TP
+.B k , Up
+Move selection up.
+.TP
+.B Enter
+Open action menu for the selected item, or load more search results.
+.TP
+.B Space
+Toggle multi-select on the focused item.
+.TP
+.B Backspace , b
+Go back (pop playlist stack) or close the current panel.
+.TP
+.B Tab
+Switch focus to the downloads panel.
+.TP
+.B Esc
+Go back, close overlay, or exit editing mode.
+.TP
+.B q
+Quit the application.
+.SS Playback Control
+.TP
+.B p
+Toggle pause / resume.
+.TP
+.B x
+Stop current playback.
+.TP
+.B Left
+Seek backward 5 seconds.
+.TP
+.B Right
+Seek forward 5 seconds, or play the selected item externally when not in
+audio-only mode.
+.TP
+.B [
+Seek backward 30 seconds.
+.TP
+.B ]
+Seek forward 30 seconds.
+.SS Action Menu
+When the action menu is open on a search result:
+.TP
+.B w
+Watch the video externally in an mpv window.
+.TP
+.B t
+Watch the video in the terminal using mpv with tct output.
+.TP
+.B a
+Listen to audio only (no video).
+.TP
+.B d
+Open the download dialog.
+.TP
+.B o
+Open the video or playlist URL in your default web browser.
+.TP
+.B c
+Copy the video URL or channel ID to the clipboard.
+.TP
+.B i
+Copy the channel ID to clipboard.
+.TP
+.B p
+Open the parent playlist (if the video belongs to one).
+.TP
+.B l
+Download all items in the current playlist or view.
+.TP
+.B s
+Download all multi-selected items.
+.SS Settings State
+.TP
+.B Enter , Right , l
+Toggle or edit the selected setting.
+.TP
+.B Esc , q
+Close the settings menu.
+.TP
+.B j , Down
+Move selection down.
+.TP
+.B k , Up
+Move selection up.
+.SS Editing Mode
+When the search bar or a settings input field is focused:
+.TP
+.B Enter
+Execute search or confirm the setting value.
+.TP
+.B Esc , Tab
+Exit editing mode.
+.TP
+.B Left
+Move cursor one character left.
+.TP
+.B Right
+Move cursor one character right.
+.TP
+.B Ctrl+Left
+Move cursor one word left.
+.TP
+.B Ctrl+Right
+Move cursor one word right.
+.TP
+.B Home
+Move cursor to beginning of line.
+.TP
+.B End
+Move cursor to end of line.
+.TP
+.B Backspace
+Delete character before cursor.
+.TP
+.B Delete
+Delete character at cursor.
+.TP
+.B Ctrl+Backspace , Ctrl+w , Ctrl+h
+Delete word backwards.
+.TP
+.B Ctrl+u
+Delete all text before cursor (clear to start of line).
+.TP
+.B Ctrl+k
+Delete all text after cursor (clear to end of line).
+.TP
+.B Ctrl+a
+Move cursor to beginning of line.
+.TP
+.B Ctrl+e
+Move cursor to end of line.
+.SS Control Keys (global)
+.TP
+.B Ctrl+s
+Toggle the settings menu.
+.TP
+.B Ctrl+t
+Cycle through available themes.
+.TP
+.B Ctrl+a
+Cycle through logo animation modes.
+.TP
+.B Ctrl+l
+Toggle the live stream filter (re-searches if results are shown).
+.TP
+.B Ctrl+p
+Toggle the playlist filter (re-searches if results are shown).
+.SS Downloads Panel
+.TP
+.B d
+Toggle the downloads panel open and closed.
+.TP
+.B p
+Pause, resume, or restart a download task.
+.TP
+.B x
+Cancel a download task, or remove it from the list if finished.
+.TP
+.B P (Shift)
+Resume or restart all selected downloads.
+.TP
+.B X (Shift)
+Cancel all selected downloads.
+.SS Format Selection
+.TP
+.B j , Down
+Next format.
+.TP
+.B k , Up
+Previous format.
+.TP
+.B Enter
+Confirm format choice.
+.TP
+.B Esc , q
+Return to the action menu.
+.SH MOUSE SUPPORT
+.TP
+.B Left click
+Select items, activate overlays, focus the search bar, toggle pause on the
+playback bar.
+.TP
+.B Double left click
+Open the action menu, confirm format selection or download dialog choices.
+.TP
+.B Scroll
+Scroll through search results, downloads, or format lists.
+.SH CONFIGURATION
+The configuration file is at
+.IR ~/.config/rataplay/config.toml .
+It is hot-reloaded every 500 ms by polling file modification time.
+.SS Root Settings
+.TP
+.BI theme " (string, default: Default)"
+Visual theme. One of: Default, Dracula, Matrix, Cyberpunk, Catppuccin.
+.TP
+.BI search_limit " (integer, default: 20)"
+Number of results per search page or "Load More" action.
+.TP
+.BI playlist_limit " (integer, default: 15)"
+Maximum number of videos to load when opening a playlist.
+.TP
+.BI download_directory " (string, default: ~/Videos/Rataplay)"
+Directory where downloads are saved.
+.TP
+.BI animation " (string, default: Glitch)"
+Logo animation mode. One of: Wave, Breathe, Glitch, Neon, Static.
+.TP
+.BI show_live " (boolean, default: true)"
+Include live streams in search results.
+.TP
+.BI show_playlists " (boolean, default: true)"
+Include playlists in search results.
+.TP
+.B progress_style
+(Default: "\f[CB]\-\fP") Character used to render progress bars.
+.SS [executables] Section
+.TP
+.BI enabled " (boolean, default: false)"
+Master switch for custom binary paths.
+.TP
+.BI mpv " (path)"
+Absolute path to the mpv binary.
+.TP
+.BI ytdlp " (path)"
+Absolute path to the yt-dlp binary.
+.TP
+.BI ffmpeg " (path)"
+Absolute path to the ffmpeg binary.
+.TP
+.BI js_runtime " (path, alias: deno)"
+Absolute path to a JavaScript runtime (e.g. deno).
+.SS [cookies] Section
+.TP
+.BI enabled " (boolean, default: false)"
+Enable cookie-based authentication for protected content.
+.TP
+.BI source.type " (string)"
+Cookie source type: off, browser, netscape, or json.
+.TP
+.BI source.value " (string)"
+Browser name (chrome, firefox, edge, safari, opera, vivaldi, brave) or file
+path, depending on source type.
+.SS [logging] Section
+.TP
+.BI enabled " (boolean, default: false)"
+Enable file logging.
+.TP
+.BI path " (path)"
+Custom log file path. Defaults vary by platform:
+.RS
+.IP Linux: 3
+~/.local/state/rataplay/rataplay.log
+.IP macOS: 3
+~/Library/Logs/rataplay/rataplay.log
+.IP Windows: 3
+%LOCALAPPDATA%/rataplay/logs/rataplay.log
+.RE
+.SH FILES
+.TP
+.I ~/.config/rataplay/config.toml
+Configuration file (hot-reloaded).
+.TP
+.I ~/.local/state/rataplay/rataplay.log
+Default log file on Linux.
+.TP
+.I ~/Videos/Rataplay/
+Default download directory.
+.TP
+.I /tmp/rataplay-mpv-*.sock
+mpv IPC socket (created at runtime, cleaned up on exit).
+.SH ENVIRONMENT
+.TP
+.B TERM
+Used to detect terminal capabilities for image rendering.
+.B xterm-kitty
+enables native Kitty protocol.
+.TP
+.B TERM_PROGRAM
+Used to detect WezTerm for native image rendering.
+.SH RUNTIME DEPENDENCIES
+The following programs must be installed and available in PATH (version-checked
+on startup):
+.TP
+.B yt-dlp
+YouTube search, metadata, format listing, and download.
+.TP
+.B mpv
+Video and audio playback with IPC remote control.
+.PP
+Optional dependencies:
+.TP
+.B ffmpeg
+Required by yt-dlp for merging downloaded streams.
+.TP
+.B deno
+JavaScript runtime for yt-dlp extractors.
+.SH FEATURES
+.TP
+.B Playlist Browsing
+Open playlists to browse their contents; navigate back with Backspace.
+.TP
+.B Multi-Select
+Select multiple items with Space for bulk download or deletion.
+.TP
+.B Download Management
+Pause, resume, cancel downloads. Real-time progress, speed, and ETA display.
+.TP
+.B Download Persistence
+In-progress downloads are restored on restart by scanning .info.json files.
+.TP
+.B URL Mode
+Paste a YouTube URL to search and play directly.
+.TP
+.B Terminal Graphics
+Native image rendering in Kitty and WezTerm; halfblock fallback for others.
+.TP
+.B MPRIS Media Controls
+Desktop media key integration (Play, Pause, Stop, Next, Previous) via D-Bus.
+.TP
+.B Clipboard Integration
+Copy video URLs and channel IDs to the system clipboard.
+.TP
+.B Paste Support
+Bracketed paste for inserting text into input fields.
+.TP
+.B Garbage Cleanup
+Remove orphaned .part, .ytdl, and .tmp files from the download directory.
+.TP
+.B Config Hot-Reload
+Configuration is re-read every 500 ms; changes apply without restart.
+.SH THEMES
+Available themes: Default, Dracula, Matrix, Cyberpunk, Catppuccin.
+Cycle with Ctrl+t.
+.SH ANIMATIONS
+Available logo animations: Wave, Breathe, Glitch, Neon, Static.
+Cycle with Ctrl+a.
+.SH KEY FILE
+.IR ~/.config/rataplay/config.toml
+is auto-generated with comments on first run. All settings have sensible
+defaults.
+.SH AUTHOR
+Mojahid <mi8238229@gmail.com>
+.SH BUGS
+Report bugs at https://github.com/mojahid8238/Rataplay/issues
+.SH SEE ALSO
+.BR mpv (1),
+.BR yt-dlp (1)

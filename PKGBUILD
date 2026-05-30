@@ -13,13 +13,16 @@ conflicts=('rataplay-git')
 
 # Fetching the pre-compiled binary and metadata files
 source=("rataplay::${url}/releases/download/v${pkgver}/rataplay"
-	"LICENSE::${url}/raw/v${pkgver}/LICENSE")
+	"LICENSE::${url}/raw/v${pkgver}/LICENSE"
+	"rataplay.1::${url}/raw/v${pkgver}/man/rataplay.1")
 #checksums for binary 
 sha256sums=('ab775a68a71849fc15d2ec5bfa97d44533b6ad9d2bc08fdbd5e4abaedb6122a1'
-            'e57f1c320b8cf8798a7d2ff83a6f9e06a33a03585f6e065fea97f1d86db84052')
+            'e57f1c320b8cf8798a7d2ff83a6f9e06a33a03585f6e065fea97f1d86db84052'
+            'SKIP')
 
 package() {
   # Install the binary to /usr/bin/
   install -Dm755 "${srcdir}/rataplay" "${pkgdir}/usr/bin/rataplay"
   install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 "${srcdir}/rataplay.1" "${pkgdir}/usr/share/man/man1/rataplay.1"
 }

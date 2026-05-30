@@ -5,31 +5,64 @@ use clap::Parser;
 #[command(author = "Mojahid")]
 #[command(version = env!("CARGO_PKG_VERSION"))]
 #[command(disable_version_flag = true)]
-#[command(help_template = "NAME:
+#[command(help_template = "\
+NAME:
    {name} - Terminal YouTube Search & Play
 
 USAGE:
-   rataplay [query] [global options]
+   rataplay [query] [options]
 
 VERSION:
    {version}
 
 DESCRIPTION:
    {name} is a terminal-based YouTube search and video player application.
-   Navigate through YouTube content efficiently using keyboard shortcuts and enjoy
-   seamless video playback directly from your terminal.
+   Type a search query or paste a YouTube URL to get started.
+
+   Navigation:
+     s, /              Focus search bar
+     j, Down           Move selection down
+     k, Up             Move selection up
+     Enter             Open action menu / Load more results
+     Space             Toggle multi-select
+     Backspace, b      Go back / Close panel
+     Tab               Switch to downloads panel
+     Esc               Go back / Exit editing mode
+     q                 Quit
+
+   Playback:
+     p                 Pause / Resume
+     x                 Stop playback
+     Left              Seek backward 5s
+     Right             Seek forward 5s / Play selected externally
+     [                 Seek backward 30s
+     ]                 Seek forward 30s
+
+   Actions (from action menu):
+     w                 Watch externally (mpv window)
+     t                 Watch in terminal (mpv tct)
+     a                 Listen (audio only)
+     d                 Download
+     o                 Open in browser
+     c                 Copy URL / Channel ID to clipboard
 
    Controls:
-     • Type your search query and press Enter
-     • Use ↑/↓ to navigate results
-     • Press s to search
-     • Press q to quit
-     • Press Esc to go back or exit
-     • Press ctrl+s to open the Settings menu
-     • Press ctrl+t to Change Theme
-     • Press ctrl+a to Change the Animations
+     Ctrl+s            Toggle Settings menu
+     Ctrl+t            Cycle theme
+     Ctrl+a            Cycle logo animation
+     Ctrl+l            Toggle live stream filter
+     Ctrl+p            Toggle playlist filter
+     Ctrl+u            In editing: clear to line start
+     Ctrl+k            In editing: clear to line end
+     Ctrl+w            In editing: delete word backwards
+     Ctrl+a            In editing: move to line start
+     Ctrl+e            In editing: move to line end
+     Ctrl+Left         In editing: move left by word
+     Ctrl+Right        In editing: move right by word
 
-
+   Search:
+     Enter             In search bar: Execute search
+     Ctrl+u/k/w/a/e    Editing shortcuts (see Controls)
 
 AUTHOR:
    {author}

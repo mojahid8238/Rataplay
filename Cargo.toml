@@ -46,11 +46,16 @@ depends = "mpv, yt-dlp"
 extended-description = """A high-performance Terminal User Interface for searching, playing, and downloading YouTube videos. Powered by mpv and yt-dlp."""
 section = "video"
 priority = "optional"
+assets = [
+    ["target/release/rataplay", "/usr/bin/rataplay", "755"],
+    ["man/rataplay.1", "/usr/share/man/man1/rataplay.1", "644"],
+]
 
 [package.metadata.generate-rpm]
 description-file = "README.md"
 assets = [
     { source = "target/release/rataplay", dest = "/usr/bin/rataplay", mode = "755" },
+    { source = "man/rataplay.1", dest = "/usr/share/man/man1/rataplay.1", mode = "644" },
 ]
 
 [package.metadata.generate-rpm.requires]
