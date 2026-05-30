@@ -1,6 +1,6 @@
 [package]
 name = "rataplay"
-version = "1.5.0"
+version = "1.5.1-beta"
 edition = "2024"
 description = "A high-performance Rust TUI for YouTube playback and management"
 license = "GPL-3.0-only"
@@ -52,6 +52,7 @@ assets = [
 ]
 
 [package.metadata.generate-rpm]
+version = "1.5.1"
 description-file = "README.md"
 assets = [
     { source = "target/release/rataplay", dest = "/usr/bin/rataplay", mode = "755" },
