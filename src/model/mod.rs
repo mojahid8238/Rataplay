@@ -60,6 +60,20 @@ impl Default for Video {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DateFilterUnit {
+    Off,
+    Day(u32),
+    Week(u32),
+    Month(u32),
+}
+
+impl Default for DateFilterUnit {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum VideoType {
     #[default]

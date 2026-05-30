@@ -61,6 +61,9 @@ pub struct App {
     pub animation_mode: AnimationMode,
     pub show_live: bool,
     pub show_playlists: bool,
+    pub date_filter_unit: crate::model::DateFilterUnit,
+    pub date_filter_selecting_unit: bool,
+    pub date_filter_selection_index: usize,
     pub progress_style: String,
     pub settings: Settings,
     pub shared_settings: Arc<RwLock<Settings>>,
@@ -71,7 +74,15 @@ pub struct App {
     pub search_results: Vec<Video>,
     pub selected_result_index: Option<usize>,
     // Async Communication
-    pub search_tx: UnboundedSender<(String, u32, u32, usize, bool, bool)>, // query, start, end, search_id, show_live, show_playlists
+    pub search_tx: UnboundedSender<(
+        String,
+        u32,
+        u32,
+        usize,
+        bool,
+        bool,
+        crate::model::DateFilterUnit,
+    )>, // query, start, end, search_id, show_live, show_playlists, date_filter
     pub result_rx: UnboundedReceiver<Result<(yt::SearchResult, usize), String>>,
     // Search Progress
     pub search_progress: Option<f32>,
@@ -200,6 +211,61 @@ impl App {
         }
     }
 
+    pub fn open_date_filter_selector(&mut self) {
+        self.date_filter_selecting_unit = true;
+        self.date_filter_selection_index = match self.date_filter_unit {
+            crate::model::DateFilterUnit::Day(_) => 0,
+            crate::model::DateFilterUnit::Week(_) => 1,
+            crate::model::DateFilterUnit::Month(_) => 2,
+            crate::model::DateFilterUnit::Off => 3,
+        };
+        self.status_message = Some("Select filter unit".to_string());
+    }
+
+    pub fn confirm_date_filter_unit(&mut self, index: usize) {
+        self.date_filter_selecting_unit = false;
+        match index {
+            0 => {
+                self.date_filter_unit = crate::model::DateFilterUnit::Day(1);
+                self.status_message = Some("Enter filter value (days): ".to_string());
+                self.settings_input = "1".to_string();
+                self.settings_cursor_position = 1;
+                self.settings_editing_item =
+                    Some(crate::tui::components::settings::SettingItem::DateFilter);
+                self.input_mode = InputMode::Editing;
+            }
+            1 => {
+                self.date_filter_unit = crate::model::DateFilterUnit::Week(1);
+                self.status_message = Some("Enter filter value (weeks): ".to_string());
+                self.settings_input = "1".to_string();
+                self.settings_cursor_position = 1;
+                self.settings_editing_item =
+                    Some(crate::tui::components::settings::SettingItem::DateFilter);
+                self.input_mode = InputMode::Editing;
+            }
+            2 => {
+                self.date_filter_unit = crate::model::DateFilterUnit::Month(1);
+                self.status_message = Some("Enter filter value (months): ".to_string());
+                self.settings_input = "1".to_string();
+                self.settings_cursor_position = 1;
+                self.settings_editing_item =
+                    Some(crate::tui::components::settings::SettingItem::DateFilter);
+                self.input_mode = InputMode::Editing;
+            }
+            3 => {
+                // Off selected
+                self.date_filter_unit = crate::model::DateFilterUnit::Off;
+                self.status_message = Some("Filter Search: Off".to_string());
+                self.save_config();
+                self.reload_config();
+                if self.state == AppState::Results && !self.is_url_mode {
+                    crate::app::actions::perform_search(self);
+                }
+            }
+            _ => {}
+        }
+    }
+
     pub fn save_config(&self) {
         let config = crate::sys::config::Config {
             theme: self.theme.name.to_string(),
@@ -209,6 +275,21 @@ impl App {
             animation: self.animation_mode,
             show_live: self.show_live,
             show_playlists: self.show_playlists,
+            search_filter: crate::sys::config::SearchFilterConfig {
+                enabled: !matches!(self.date_filter_unit, crate::model::DateFilterUnit::Off),
+                unit: match self.date_filter_unit {
+                    crate::model::DateFilterUnit::Day(_) => "day".to_string(),
+                    crate::model::DateFilterUnit::Week(_) => "week".to_string(),
+                    crate::model::DateFilterUnit::Month(_) => "month".to_string(),
+                    crate::model::DateFilterUnit::Off => String::new(),
+                },
+                value: match self.date_filter_unit {
+                    crate::model::DateFilterUnit::Day(v)
+                    | crate::model::DateFilterUnit::Week(v)
+                    | crate::model::DateFilterUnit::Month(v) => v,
+                    crate::model::DateFilterUnit::Off => 1,
+                },
+            },
             progress_style: self.progress_style.clone(),
             executables: crate::sys::config::Executables {
                 enabled: self.settings.use_custom_paths,
@@ -311,6 +392,18 @@ impl App {
                 self.animation_mode = config.animation;
                 self.show_live = config.show_live;
                 self.show_playlists = config.show_playlists;
+                self.date_filter_unit = if config.search_filter.enabled
+                    && !config.search_filter.unit.is_empty()
+                {
+                    match config.search_filter.unit.as_str() {
+                        "day" => crate::model::DateFilterUnit::Day(config.search_filter.value),
+                        "week" => crate::model::DateFilterUnit::Week(config.search_filter.value),
+                        "month" => crate::model::DateFilterUnit::Month(config.search_filter.value),
+                        _ => crate::model::DateFilterUnit::Off,
+                    }
+                } else {
+                    crate::model::DateFilterUnit::Off
+                };
                 self.progress_style = config.progress_style.clone();
 
                 let log_path = config.get_log_path().ok();
@@ -388,8 +481,15 @@ impl App {
             .map(|(i, t)| (i, *t))
             .unwrap_or((0, crate::tui::components::theme::AVAILABLE_THEMES[0]));
 
-        let (search_tx, mut search_rx) =
-            mpsc::unbounded_channel::<(String, u32, u32, usize, bool, bool)>();
+        let (search_tx, mut search_rx) = mpsc::unbounded_channel::<(
+            String,
+            u32,
+            u32,
+            usize,
+            bool,
+            bool,
+            crate::model::DateFilterUnit,
+        )>();
         let (result_tx, result_rx) =
             mpsc::unbounded_channel::<Result<(yt::SearchResult, usize), String>>();
 
@@ -400,7 +500,7 @@ impl App {
 
         let task_settings = shared_settings.clone();
         let search_task = tokio::spawn(async move {
-            while let Some((query, start, end, id, show_live, show_playlists)) =
+            while let Some((query, start, end, id, show_live, show_playlists, date_filter)) =
                 search_rx.recv().await
             {
                 let tx = result_tx.clone();
@@ -415,6 +515,7 @@ impl App {
                             end,
                             show_live,
                             show_playlists,
+                            date_filter,
                             current_settings,
                             item_tx.clone(),
                         )
@@ -722,6 +823,20 @@ impl App {
             animation_mode: config.animation,
             show_live: config.show_live,
             show_playlists: config.show_playlists,
+            date_filter_unit: if config.search_filter.enabled
+                && !config.search_filter.unit.is_empty()
+            {
+                match config.search_filter.unit.as_str() {
+                    "day" => crate::model::DateFilterUnit::Day(config.search_filter.value),
+                    "week" => crate::model::DateFilterUnit::Week(config.search_filter.value),
+                    "month" => crate::model::DateFilterUnit::Month(config.search_filter.value),
+                    _ => crate::model::DateFilterUnit::Off,
+                }
+            } else {
+                crate::model::DateFilterUnit::Off
+            },
+            date_filter_selecting_unit: false,
+            date_filter_selection_index: 3,
             progress_style: config.progress_style,
             settings,
             shared_settings,

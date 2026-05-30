@@ -28,6 +28,8 @@ pub struct Config {
 
     // New Fields
     #[serde(default)]
+    pub search_filter: SearchFilterConfig,
+    #[serde(default)]
     pub executables: Executables,
     #[serde(default)]
     pub cookies: Cookies,
@@ -77,6 +79,26 @@ pub struct Logging {
     #[serde(default = "default_false")]
     pub enabled: bool,
     pub path: Option<PathBuf>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct SearchFilterConfig {
+    #[serde(default = "default_false")]
+    pub enabled: bool,
+    #[serde(default = "default_search_filter_unit")]
+    pub unit: String,
+    #[serde(default = "default_search_filter_value")]
+    pub value: u32,
+}
+
+impl Default for SearchFilterConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            unit: String::new(),
+            value: 1,
+        }
+    }
 }
 
 impl Default for Executables {
@@ -149,6 +171,12 @@ fn default_download_directory() -> String {
 fn default_progress_style() -> String {
     "━".to_string()
 }
+fn default_search_filter_unit() -> String {
+    String::new()
+}
+fn default_search_filter_value() -> u32 {
+    1
+}
 
 impl Default for Config {
     fn default() -> Self {
@@ -161,6 +189,7 @@ impl Default for Config {
             show_live: default_true(),
             show_playlists: default_true(),
             progress_style: default_progress_style(),
+            search_filter: SearchFilterConfig::default(),
             executables: Executables::default(),
             cookies: Cookies::default(),
             logging: Logging::default(),
@@ -297,6 +326,7 @@ impl Config {
         let mut new_lines = Vec::new();
         let mut current_section = "".to_string();
         let mut root_keys_updated = std::collections::HashSet::new();
+        let mut sections_seen = std::collections::HashSet::new();
         let root_keys = [
             "theme",
             "search_limit",
@@ -323,6 +353,7 @@ impl Config {
                     let potential_section = trimmed[1..end_idx].trim();
                     if !potential_section.is_empty() {
                         current_section = potential_section.to_string();
+                        sections_seen.insert(current_section.clone());
                     }
                 }
                 new_lines.push(line.to_string());
@@ -398,6 +429,19 @@ impl Config {
                             root_keys_updated.insert(k);
                         }
                         _ => {}
+                    }
+                } else if current_section == "search_filter" {
+                    if key == "enabled" {
+                        new_line = format!("enabled = {}", self.search_filter.enabled);
+                        root_keys_updated.insert("search_filter.enabled");
+                    } else if key == "unit" {
+                        if let Ok(val) = serde_json::to_string(&self.search_filter.unit) {
+                            new_line = format!("unit = {}", val);
+                            root_keys_updated.insert("search_filter.unit");
+                        }
+                    } else if key == "value" {
+                        new_line = format!("value = {}", self.search_filter.value);
+                        root_keys_updated.insert("search_filter.value");
                     }
                 } else if current_section == "executables" {
                     if key == "enabled" {
@@ -481,6 +525,85 @@ impl Config {
             }
         }
 
+        // Add missing keys inside existing [search_filter] section
+        if sections_seen.contains("search_filter") {
+            let sf_keys = [
+                "search_filter.enabled",
+                "search_filter.unit",
+                "search_filter.value",
+            ];
+            let mut sf_missing = Vec::new();
+            for k in &sf_keys {
+                if !root_keys_updated.contains(*k) {
+                    match *k {
+                        "search_filter.enabled" => {
+                            sf_missing.push(format!("enabled = {}", self.search_filter.enabled))
+                        }
+                        "search_filter.unit" => sf_missing.push(format!(
+                            "unit = {}",
+                            serde_json::to_string(&self.search_filter.unit).unwrap_or_default()
+                        )),
+                        "search_filter.value" => {
+                            sf_missing.push(format!("value = {}", self.search_filter.value))
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            if !sf_missing.is_empty() {
+                // Find section boundaries: after [search_filter] header, before next section/EOF
+                let section_start = new_lines
+                    .iter()
+                    .position(|l| l.trim() == "[search_filter]")
+                    .unwrap();
+                let section_end = new_lines
+                    .iter()
+                    .enumerate()
+                    .skip(section_start + 1)
+                    .find(|(_, l)| l.trim().starts_with('['))
+                    .map(|(i, _)| i)
+                    .unwrap_or(new_lines.len());
+                // Find the last non-comment, non-empty line within the section
+                let insert_at = new_lines[section_start..section_end]
+                    .iter()
+                    .enumerate()
+                    .rev()
+                    .find(|(_, l)| {
+                        let t = l.trim();
+                        !t.is_empty() && !t.starts_with('#') && !t.starts_with('[')
+                    })
+                    .map(|(i, _)| section_start + i + 1)
+                    .unwrap_or(section_start + 1);
+                for (i, line) in sf_missing.into_iter().enumerate() {
+                    new_lines.insert(insert_at + i, line);
+                }
+            }
+        }
+
+        // Add missing [search_filter] section if not present
+        if !sections_seen.contains("search_filter") {
+            let search_filter_lines = vec![
+                String::new(),
+                "[search_filter]".to_string(),
+                format!("enabled = {}", self.search_filter.enabled),
+                "# Units: \"day\", \"week\", \"month\"".to_string(),
+                format!(
+                    "unit = {}",
+                    serde_json::to_string(&self.search_filter.unit).unwrap_or_default()
+                ),
+                format!("value = {}", self.search_filter.value),
+            ];
+            if let Some(idx) = first_section_index {
+                // Insert before the first section
+                for (i, line) in search_filter_lines.into_iter().enumerate() {
+                    new_lines.insert(idx + i, line);
+                }
+            } else {
+                // Append to the end
+                new_lines.extend(search_filter_lines);
+            }
+        }
+
         Ok(new_lines.join("\n"))
     }
 
@@ -536,6 +659,15 @@ impl Config {
             "progress_style = {}\n\n",
             serde_json::to_string(&self.progress_style)?
         ));
+
+        content.push_str("[search_filter]\n");
+        content.push_str(&format!("enabled = {}\n", self.search_filter.enabled));
+        content.push_str("# Units: \"day\", \"week\", \"month\"\n");
+        content.push_str(&format!(
+            "unit = {}\n",
+            serde_json::to_string(&self.search_filter.unit)?
+        ));
+        content.push_str(&format!("value = {}\n\n", self.search_filter.value));
 
         content.push_str("# --- Advanced Configuration ---\n\n");
 

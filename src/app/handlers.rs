@@ -343,6 +343,27 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
             }
 
             match app.state {
+                AppState::Settings if app.date_filter_selecting_unit => match code {
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        app.date_filter_selection_index = if app.date_filter_selection_index == 0 {
+                            3
+                        } else {
+                            app.date_filter_selection_index - 1
+                        };
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        app.date_filter_selection_index = (app.date_filter_selection_index + 1) % 4;
+                    }
+                    KeyCode::Enter | KeyCode::Right | KeyCode::Char('l') => {
+                        app.confirm_date_filter_unit(app.date_filter_selection_index);
+                    }
+                    KeyCode::Esc | KeyCode::Char('q') | KeyCode::Tab => {
+                        app.date_filter_selecting_unit = false;
+                        app.date_filter_selection_index = 3;
+                        app.status_message = Some("Filter Search: unchanged".to_string());
+                    }
+                    _ => {}
+                },
                 AppState::Settings => match code {
                     KeyCode::Esc | KeyCode::Char('q') => {
                         app.state = app.previous_app_state;
@@ -403,6 +424,9 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                         app.settings_input = app.download_directory.clone();
                                         app.settings_cursor_position = app.settings_input.len();
                                         app.status_message = Some("Enter new Download Directory: ".to_string());
+                                    }
+                                    crate::tui::components::settings::SettingItem::DateFilter => {
+                                        app.open_date_filter_selector();
                                     }
                                     crate::tui::components::settings::SettingItem::EnableLogging => {
                                         app.settings.enable_logging = !app.settings.enable_logging;
@@ -1112,6 +1136,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                                 app.current_search_id,
                                                 app.show_live,
                                                 app.show_playlists,
+                                                app.date_filter_unit,
                                             ));
                                             app.status_message =
                                                 Some(format!("Loading playlist: {}...", title));
@@ -1360,6 +1385,48 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                 app.save_config();
                                 app.reload_config();
                             }
+                            Some(crate::tui::components::settings::SettingItem::DateFilter) => {
+                                if let Ok(n) = val.parse::<u32>() {
+                                    if n == 0 {
+                                        app.status_message =
+                                            Some("Value must be at least 1".to_string());
+                                        app.settings_input = "1".to_string();
+                                        app.settings_cursor_position = 1;
+                                        return;
+                                    }
+                                    let unit_name = match app.date_filter_unit {
+                                        crate::model::DateFilterUnit::Day(_) => "Day",
+                                        crate::model::DateFilterUnit::Week(_) => "Week",
+                                        crate::model::DateFilterUnit::Month(_) => "Month",
+                                        crate::model::DateFilterUnit::Off => "Off",
+                                    };
+                                    app.date_filter_unit = match app.date_filter_unit {
+                                        crate::model::DateFilterUnit::Day(_) => {
+                                            crate::model::DateFilterUnit::Day(n)
+                                        }
+                                        crate::model::DateFilterUnit::Week(_) => {
+                                            crate::model::DateFilterUnit::Week(n)
+                                        }
+                                        crate::model::DateFilterUnit::Month(_) => {
+                                            crate::model::DateFilterUnit::Month(n)
+                                        }
+                                        crate::model::DateFilterUnit::Off => {
+                                            crate::model::DateFilterUnit::Off
+                                        }
+                                    };
+                                    app.status_message =
+                                        Some(format!("Filter Search: {} ({})", unit_name, n));
+                                    app.save_config();
+                                    app.reload_config();
+                                    if app.state == AppState::Results && !app.is_url_mode {
+                                        crate::app::actions::perform_search(app);
+                                    }
+                                } else {
+                                    app.status_message = Some("Invalid number".to_string());
+                                    app.settings_input.clear();
+                                    app.settings_cursor_position = 0;
+                                }
+                            }
                             _ => {}
                         }
                         app.settings_input.clear();
@@ -1530,6 +1597,13 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                 }
                 KeyCode::Esc | KeyCode::Tab => {
                     if app.state == AppState::Settings {
+                        if let Some(crate::tui::components::settings::SettingItem::DateFilter) =
+                            app.settings_editing_item
+                        {
+                            // Cancel date filter edit: revert to Off since no value was confirmed
+                            app.date_filter_unit = crate::model::DateFilterUnit::Off;
+                            app.status_message = Some("Filter Search: Off".to_string());
+                        }
                         app.settings_input.clear();
                         app.settings_cursor_position = 0;
                         app.settings_editing_item = None;

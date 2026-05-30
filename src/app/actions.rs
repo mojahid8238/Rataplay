@@ -339,6 +339,8 @@ pub fn perform_search(app: &mut App) {
     app.search_offset = 1;
     app.is_playlist_mode = is_direct_playlist_url;
 
+    let effective_limit = app.search_limit;
+
     if is_url && is_direct_playlist_url {
         let _ = app.search_tx.send((
             app.search_query.clone(),
@@ -347,6 +349,7 @@ pub fn perform_search(app: &mut App) {
             app.current_search_id,
             app.show_live,
             app.show_playlists,
+            app.date_filter_unit,
         ));
     } else if is_url {
         let _ = app.search_tx.send((
@@ -356,15 +359,17 @@ pub fn perform_search(app: &mut App) {
             app.current_search_id,
             app.show_live,
             app.show_playlists,
+            app.date_filter_unit,
         ));
     } else {
         let _ = app.search_tx.send((
             app.search_query.clone(),
             1,
-            app.search_limit,
+            effective_limit,
             app.current_search_id,
             app.show_live,
             app.show_playlists,
+            app.date_filter_unit,
         ));
     }
 }
@@ -393,6 +398,7 @@ pub fn load_more(app: &mut App) {
         app.current_search_id,
         app.show_live,
         app.show_playlists,
+        app.date_filter_unit,
     ));
 }
 

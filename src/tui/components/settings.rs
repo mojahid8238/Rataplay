@@ -11,6 +11,7 @@ pub enum SettingItem {
     DownloadDirectory,
     ShowLive,
     ShowPlaylists,
+    DateFilter,
     EnableLogging,
     UseCustomPaths,
     CookieMode,
@@ -27,6 +28,7 @@ impl SettingItem {
             Self::DownloadDirectory,
             Self::ShowLive,
             Self::ShowPlaylists,
+            Self::DateFilter,
             Self::EnableLogging,
             Self::UseCustomPaths,
             Self::CookieMode,
@@ -43,6 +45,7 @@ impl SettingItem {
             Self::DownloadDirectory => "Download Directory",
             Self::ShowLive => "Show Live Streams",
             Self::ShowPlaylists => "Show Playlists",
+            Self::DateFilter => "Filter Search",
             Self::EnableLogging => "Enable Logging",
             Self::UseCustomPaths => "Use Custom Paths",
             Self::CookieMode => "Cookie Mode",
@@ -74,6 +77,12 @@ pub fn render_settings_menu(f: &mut Frame, app: &mut App, area: Rect) {
                 SettingItem::ShowPlaylists => {
                     (if app.show_playlists { "On" } else { "Off" }).to_string()
                 }
+                SettingItem::DateFilter => match app.date_filter_unit {
+                    crate::model::DateFilterUnit::Off => "Off".to_string(),
+                    crate::model::DateFilterUnit::Day(v) => format!("Day ({})", v),
+                    crate::model::DateFilterUnit::Week(v) => format!("Week ({})", v),
+                    crate::model::DateFilterUnit::Month(v) => format!("Month ({})", v),
+                },
                 SettingItem::EnableLogging => (if app.settings.enable_logging {
                     "On"
                 } else {
@@ -132,9 +141,54 @@ pub fn render_settings_menu(f: &mut Frame, app: &mut App, area: Rect) {
     f.render_widget(Clear, area);
     f.render_stateful_widget(list, area, &mut app.settings_state);
 
+    if app.date_filter_selecting_unit {
+        render_date_filter_popup(f, app);
+    }
+
     if let Some(item) = app.settings_editing_item {
         render_input_popup(f, app, item);
     }
+}
+
+const DATE_FILTER_OPTIONS: &[&str] = &["Day", "Week", "Month", "Off"];
+
+fn render_date_filter_popup(f: &mut Frame, app: &App) {
+    let area = centered_rect_fixed(32, (DATE_FILTER_OPTIONS.len() + 2) as u16, f.area());
+
+    let block = Block::default()
+        .title(" Filter Search ")
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(app.theme.accent));
+
+    let items: Vec<ListItem> = DATE_FILTER_OPTIONS
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            let style = if i == app.date_filter_selection_index {
+                Style::default()
+                    .bg(app.theme.highlight)
+                    .fg(app.theme.fg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(app.theme.fg)
+            };
+            let prefix = if i == app.date_filter_selection_index {
+                "┃ "
+            } else {
+                "  "
+            };
+            ListItem::new(Line::from(vec![Span::styled(
+                format!("{}{}", prefix, name),
+                style,
+            )]))
+        })
+        .collect();
+
+    let list = List::new(items).block(block);
+
+    f.render_widget(Clear, area);
+    f.render_widget(list, area);
 }
 
 fn render_input_popup(f: &mut Frame, app: &App, item: SettingItem) {

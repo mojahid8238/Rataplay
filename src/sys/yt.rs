@@ -77,6 +77,7 @@ pub async fn search_videos_flat(
     end: u32,
     show_live: bool,
     show_playlists: bool,
+    date_filter: crate::model::DateFilterUnit,
     settings: Settings,
     tx: tokio::sync::mpsc::UnboundedSender<Result<SearchResult, String>>,
 ) -> Result<()> {
@@ -105,8 +106,22 @@ pub async fn search_videos_flat(
         is_direct_playlist_url = true;
     }
 
-    let args = if is_url && is_direct_playlist_url {
-        // This is a direct playlist URL, we want to list its contents
+    let is_date_filter_active =
+        !matches!(date_filter, crate::model::DateFilterUnit::Off) && !is_url;
+
+    // Pre-compute the dateafter value so it lives long enough for the args borrow
+    let dateafter_arg = if is_date_filter_active {
+        Some(match date_filter {
+            crate::model::DateFilterUnit::Day(n) => format!("now-{}day", n),
+            crate::model::DateFilterUnit::Week(n) => format!("now-{}week", n),
+            crate::model::DateFilterUnit::Month(n) => format!("now-{}month", n),
+            _ => unreachable!(),
+        })
+    } else {
+        None
+    };
+
+    let args: Vec<&str> = if is_url && is_direct_playlist_url {
         vec![
             "--dump-json",
             "--flat-playlist",
@@ -121,13 +136,26 @@ pub async fn search_videos_flat(
             &search_query,
         ]
     } else if is_url {
-        // This is a direct video URL or other single item URL
-        // We don't use --flat-playlist here because we want full metadata for the single item
         vec![
             "--dump-json",
             "--no-check-formats",
             "--ignore-errors",
             "--no-warnings",
+            &search_query,
+        ]
+    } else if let Some(ref date_val) = dateafter_arg {
+        // Date filter active: full extraction (no --flat-playlist) with --dateafter
+        vec![
+            "--dump-json",
+            "--no-check-formats",
+            "--ignore-errors",
+            "--no-warnings",
+            "--dateafter",
+            date_val,
+            "--playlist-start",
+            &start_str,
+            "--playlist-end",
+            &end_str,
             &search_query,
         ]
     } else {
@@ -137,10 +165,10 @@ pub async fn search_videos_flat(
             "--no-check-formats",
             "--ignore-errors",
             "--no-warnings",
-            "--playlist-start", // Added to fetch a specific range
+            "--playlist-start",
             &start_str,
             "--playlist-end",
-            &end_str, // Use end to limit the number of search results
+            &end_str,
             &search_query,
         ]
     };
