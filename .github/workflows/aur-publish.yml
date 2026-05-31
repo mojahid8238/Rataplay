@@ -45,12 +45,12 @@ jobs:
         run: |
           docker run --rm -v "${{ github.workspace }}:/github/workspace" archlinux:latest \
             bash -c "
-              ORIG_OWNER=$(stat -c '%u:%g' /github/workspace) &&
+              ORIG_OWNER=\$(stat -c '%u:%g' /github/workspace) &&
               useradd -m builder &&
               chown -R builder:builder /github/workspace &&
               pacman -Sy --noconfirm pacman-contrib sudo &&
               sudo -u builder bash -c 'cd /github/workspace && updpkgsums && makepkg --printsrcinfo > .SRCINFO' &&
-              chown -R $ORIG_OWNER /github/workspace
+              chown -R \$ORIG_OWNER /github/workspace
             "
         
       - name: Set up SSH Key for AUR
