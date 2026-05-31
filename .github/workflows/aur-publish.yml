@@ -1,4 +1,4 @@
-name: AUR Publish
+name: AUR Publish # Trigger re-parse
 
 on:
   workflow_dispatch:
