@@ -45,13 +45,12 @@ jobs:
         uses: docker://archlinux:latest
         with:
           entrypoint: /bin/bash
-          args:
-            - -c
-            - |
-              useradd -m builder &&
-              chown -R builder:builder /github/workspace &&
-              pacman -Sy --noconfirm pacman-contrib sudo &&
-              sudo -u builder bash -c 'updpkgsums && makepkg --printsrcinfo > .SRCINFO'
+          args: |-
+            -c
+            useradd -m builder &&
+            chown -R builder:builder /github/workspace &&
+            pacman -Sy --noconfirm pacman-contrib sudo &&
+            sudo -u builder bash -c 'updpkgsums && makepkg --printsrcinfo > .SRCINFO'
         
       - name: Set up SSH Key for AUR
         uses: webfactory/ssh-agent@v0.8.0
