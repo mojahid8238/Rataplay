@@ -1,0 +1,77 @@
+name: AUR Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Git tag (e.g., v1.5.1, v1.5.1-beta)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Rataplay Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Fetch all history for accurate versioning
+
+      - name: Setup Version Variables
+        id: set_version
+        run: |
+          RAW_TAG="${{ github.event.inputs.tag }}"
+          VERSION=$(echo "${RAW_TAG#v}" | sed 's/-/_/g')
+          echo "RAW_TAG=${RAW_TAG}" >> $GITHUB_ENV
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+      - name: Read Maintainer Info from PKGBUILD
+        id: get_maintainer
+        run: |
+          MAINTAINER_NAME=$(grep '# Maintainer:' PKGBUILD | cut -d' ' -f3)
+          MAINTAINER_EMAIL=$(grep '# Maintainer:' PKGBUILD | sed -n 's/.*<\(.*\)>.*/\1/p')
+          echo "MAINTAINER_NAME=${MAINTAINER_NAME}" >> $GITHUB_ENV
+          echo "MAINTAINER_EMAIL=${MAINTAINER_EMAIL}" >> $GITHUB_ENV
+
+      - name: Update PKGBUILD with new version
+        run: |
+          sed -i "s/^_tag=.*/_tag=${{ env.RAW_TAG }}/" PKGBUILD
+          sed -i "s/^pkgver=.*/pkgver=${{ env.VERSION }}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+      
+      - name: Generate Checksums and .SRCINFO
+        uses: docker://archlinux:latest
+        with:
+          entrypoint: /bin/bash
+          args: -c "pacman -Sy --noconfirm pacman-contrib && updpkgsums && makepkg --printsrcinfo > .SRCINFO"
+        
+      - name: Set up SSH Key for AUR
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.AUR_SSH_KEY }}
+
+      - name: Configure Git for AUR Push
+        run: |
+          git config --global user.name "${{ env.MAINTAINER_NAME }}"
+          git config --global user.email "${{ env.MAINTAINER_EMAIL }}"
+          mkdir -p ~/.ssh
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Push to AUR
+        run: |
+          git clone ssh://aur@aur.archlinux.org/rataplay.git aur-rataplay
+          cp PKGBUILD aur-rataplay/
+          cp .SRCINFO aur-rataplay/
+          cd aur-rataplay
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update rataplay to ${{ env.RAW_TAG }}"
+          git push
+
+      - name: Commit Updated PKGBUILD to Rataplay Repo
+        run: |
+          git add PKGBUILD
+          git commit -m "Update PKGBUILD to ${{ env.RAW_TAG }} for AUR sync"
+          git push
