@@ -1,7 +1,7 @@
 # Maintainer: Mojahid <mi8238229@gmail.com>
 pkgname=rataplay
-_tag=v1.3.1 # Placeholder, will be replaced by CI
-pkgver=1.3.1 # Placeholder, will be replaced by CI
+_tag=v1.5.1-beta
+pkgver=1.5.1_beta
 pkgrel=1
 pkgdesc="A high-performance Rust TUI for YouTube playback and management (Binary Release)"
 arch=('x86_64')
@@ -17,9 +17,9 @@ source=("rataplay::${url}/releases/download/${_tag}/rataplay"
 	"LICENSE::${url}/raw/${_tag}/LICENSE"
 	"rataplay.1::${url}/raw/${_tag}/man/rataplay.1")
 #checksums for binary 
-sha256sums=('ab775a68a71849fc15d2ec5bfa97d44533b6ad9d2bc08fdbd5e4abaedb6122a1'
+sha256sums=('012aaae995aa661cb9df626f5f66bb752f6fd9c3e64ca16d974ddfbabf34716b'
             'e57f1c320b8cf8798a7d2ff83a6f9e06a33a03585f6e065fea97f1d86db84052'
-            'SKIP')
+            '5eddb79a839d815c16adc7c95f4510a693bf270633d554642a977f6462def97f')
 
 package() {
   # Install the binary to /usr/bin/
