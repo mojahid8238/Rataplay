@@ -79,5 +79,5 @@ jobs:
       - name: Commit Updated PKGBUILD to Rataplay Repo
         run: |
           git add PKGBUILD
-          git commit -m "Update PKGBUILD to ${{ env.RAW_TAG }} for AUR sync"
+          git commit -m "Update PKGBUILD to ${{ env.RAW_TAG }}"
           git push
