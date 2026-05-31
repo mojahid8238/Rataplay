@@ -48,7 +48,7 @@ jobs:
               useradd -m builder &&
               chown -R builder:builder /github/workspace &&
               pacman -Sy --noconfirm pacman-contrib sudo &&
-              sudo -u builder bash -c 'updpkgsums && makepkg --printsrcinfo > .SRCINFO'
+              sudo -u builder bash -c 'cd /github/workspace && updpkgsums && makepkg --printsrcinfo > .SRCINFO'
             "
         
       - name: Set up SSH Key for AUR
