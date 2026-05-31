@@ -17,6 +17,7 @@
 - 📥 **Background Downloads**: Multi-threaded downloads with real-time speed, progress, and ETA tracking. Re-download in any quality video from downloads panel.
 - 📂 **Local Management**: Browse, play, and manage your downloaded files directly within the app.
 - 🖱️ **Mouse Support**: Navigate search results, manage downloads, and interact with the UI seamlessly using your mouse.
+- 🗓️ **Date Filters**: Narrow down searches by day, week, or month for more relevant results.
 - 🛠️ **Custom Execution Paths**: Override default system paths for critical dependencies like `mpv`, `yt-dlp`, `ffmpeg`, and `deno`.
 - 📝 **Logging System**: Robust logging system with configurable file paths and levels for easier debugging.
 - 🍪 **Cookie Integration**: Authenticate with YouTube using browser cookies or exported files (Netscape/JSON) to access restricted content.

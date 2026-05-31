@@ -23,6 +23,15 @@ show_live = true
 # Whether to show playlists in search results.
 show_playlists = true
 
+# The character/string to use for the download progress bar.
+progress_style = "━"
+
+[search_filter]
+enabled = false
+# Units: "day", "week", "month"
+unit = "month"
+value = 14
+
 # --- Advanced Configuration ---
 
 [executables]
@@ -31,7 +40,7 @@ enabled = false
 # mpv = "/usr/bin/mpv"
 # ytdlp = "/usr/bin/yt-dlp"
 # ffmpeg = "/usr/bin/ffmpeg"
-# deno = "/usr/bin/deno"
+# js_runtime = "/usr/bin/deno"
 
 [cookies]
 # This section configures how yt-dlp accesses cookies for protected content (like Watch Later).

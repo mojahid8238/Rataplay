@@ -255,6 +255,16 @@ Include playlists in search results.
 .TP
 .B progress_style
 (Default: "\f[CB]\-\fP") Character used to render progress bars.
+.SS [search_filter] Section
+.TP
+.BI enabled " (boolean, default: false)"
+Enable date-based filtering of search results.
+.TP
+.BI unit " (string, default: \"\")"
+Time unit for the filter. One of: day, week, month.
+.TP
+.BI value " (integer, default: 1)"
+Filter value in the given unit (e.g. 14 with unit "day" = last 14 days).
 .SS [executables] Section
 .TP
 .BI enabled " (boolean, default: false)"
