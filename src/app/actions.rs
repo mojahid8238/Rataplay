@@ -433,9 +433,8 @@ pub fn stop_playback(app: &mut App) {
     app.terminal_loading_error = None;
     app.terminal_ready_url = None;
     app.status_message = Some("Stopped.".to_string());
-    if let Some(mc) = &mut app.media_controller {
-        let _ = mc.set_playback_status(false);
-    }
+    app.playing_source = None;
+    app.destroy_media();
 }
 
 pub fn toggle_pause(app: &mut App) {

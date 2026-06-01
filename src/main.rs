@@ -6,6 +6,7 @@ mod tui;
 
 use crate::model::settings::Settings;
 use anyhow::Result;
+use app::app::PlayingSource;
 use app::{
     App, AppAction, handle_key_event, handle_mouse_event, handle_paste, on_tick, perform_search,
     stop_playback,
@@ -262,8 +263,10 @@ async fn main() -> Result<()> {
 
             // Handle pending actions (Playback)
             if let Some((action, url, title)) = app.pending_action.take() {
-                // Kill previous playback if any
+                // Save playing_source across stop_playback (skip_to_video may have set it)
+                let saved_source = app.playing_source;
                 stop_playback(&mut app);
+                app.playing_source = saved_source;
 
                 // Suspend TUI only if needed (not needed for terminal anymore as it's separate)
 
@@ -294,10 +297,15 @@ async fn main() -> Result<()> {
                                 app.playback_is_audio = false;
                                 app.playback_cmd_tx = Some(tx);
                                 app.playback_process = Some(child);
-                                app.playback_title = Some(title);
+                                app.playback_title = Some(title.clone());
                                 app.status_message = Some("Playing externally...".to_string());
+                                app.init_media();
+                                if app.playing_source.is_none() {
+                                    app.playing_source = app.selected_result_index.map(PlayingSource::SearchResults)
+                                        .or_else(|| app.selected_local_file_index.map(PlayingSource::LocalFiles));
+                                }
                                 if let Some(mc) = &mut app.media_controller {
-                                    let _ = mc.set_metadata(app.playback_title.as_deref().unwrap_or("Unknown"), None, None);
+                                    let _ = mc.set_metadata(&title, None, None);
                                     let _ = mc.set_playback_status(true);
                                 }
                             }
@@ -323,10 +331,15 @@ async fn main() -> Result<()> {
                                 app.playback_is_audio = true;
                                 app.playback_cmd_tx = Some(tx);
                                 app.playback_process = Some(child);
-                                app.playback_title = Some(title);
+                                app.playback_title = Some(title.clone());
                                 app.status_message = Some("Playing audio...".to_string());
+                                app.init_media();
+                                if app.playing_source.is_none() {
+                                    app.playing_source = app.selected_result_index.map(PlayingSource::SearchResults)
+                                        .or_else(|| app.selected_local_file_index.map(PlayingSource::LocalFiles));
+                                }
                                 if let Some(mc) = &mut app.media_controller {
-                                    let _ = mc.set_metadata(app.playback_title.as_deref().unwrap_or("Unknown"), None, None);
+                                    let _ = mc.set_metadata(&title, None, None);
                                     let _ = mc.set_playback_status(true);
                                 }
                             }
@@ -359,6 +372,11 @@ async fn main() -> Result<()> {
 
                 if let Ok(mut child) = sys::process::play_video(final_url, None, true, ua, &settings) {
                     // Update media controller
+                    app.init_media();
+                    if app.playing_source.is_none() {
+                        app.playing_source = app.selected_result_index.map(PlayingSource::SearchResults)
+                            .or_else(|| app.selected_local_file_index.map(PlayingSource::LocalFiles));
+                    }
                     if let Some(mc) = &mut app.media_controller {
                         let _ = mc.set_metadata("Terminal Playback", None, None);
                         let _ = mc.set_playback_status(true);
@@ -405,10 +423,19 @@ async fn main() -> Result<()> {
                                         let _ = cmd_tx.send("{\"command\": [\"cycle\", \"pause\"]}\n".to_string());
                                     }
                                     MediaEvent::Next => {
-                                        let _ = cmd_tx.send("{\"command\": [\"seek\", 10, \"relative\"]}\n".to_string());
+                                        app::updates::skip_to_video(&mut app, 1);
+                                        if app.pending_action.is_some() {
+                                            let _ = child.start_kill();
+                                        }
                                     }
                                     MediaEvent::Previous => {
-                                        let _ = cmd_tx.send("{\"command\": [\"seek\", -10, \"relative\"]}\n".to_string());
+                                        let prev_playing_source = app.playing_source;
+                                        app::updates::skip_to_video(&mut app, -1);
+                                        if app.pending_action.is_some() {
+                                            let _ = child.start_kill();
+                                        } else if prev_playing_source.is_some() {
+                                            let _ = cmd_tx.send("{\"command\": [\"set_property\", \"time-pos\", 0]}\n".to_string());
+                                        }
                                     }
                                     MediaEvent::Stop => {
                                         let _ = child.start_kill();
@@ -424,9 +451,7 @@ async fn main() -> Result<()> {
                         let _ = std::fs::remove_file(&socket_path);
                     }
 
-                    if let Some(mc) = &mut app.media_controller {
-                        let _ = mc.set_playback_status(false);
-                    }
+                    app.destroy_media();
                 }
 
                 // Resume TUI

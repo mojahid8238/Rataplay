@@ -155,8 +155,17 @@ pub struct App {
     pub media_controller: Option<MediaController>,
     pub media_rx: UnboundedReceiver<MediaEvent>,
 
+    // Track source for MPRIS Next/Previous
+    pub playing_source: Option<PlayingSource>,
+
     // Clipboard
     pub clipboard: Option<arboard::Clipboard>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum PlayingSource {
+    SearchResults(usize),
+    LocalFiles(usize),
 }
 
 impl App {
@@ -464,6 +473,21 @@ impl App {
 
         // The Download manager task handles its own children abort when its cmd_rx closes (on drop)
         // or when it is aborted itself.
+    }
+
+    pub fn init_media(&mut self) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        if let Ok(controller) = MediaController::init(tx) {
+            self.media_controller = Some(controller);
+            self.media_rx = rx;
+        }
+    }
+
+    pub fn destroy_media(&mut self) {
+        self.media_controller = None;
+        let (dummy_tx, rx) = mpsc::unbounded_channel();
+        drop(dummy_tx);
+        self.media_rx = rx;
     }
 
     pub fn new(config: crate::sys::config::Config, settings: Settings) -> Self {
@@ -782,8 +806,7 @@ impl App {
             }
         }
 
-        let (media_tx, media_rx) = mpsc::unbounded_channel();
-        let media_controller = MediaController::init(media_tx).ok();
+        let (_dummy_tx, media_rx) = mpsc::unbounded_channel();
 
         Self {
             running: true,
@@ -898,8 +921,9 @@ impl App {
             playlist_stack: Vec::new(),
             selected_playlist_indices: std::collections::HashSet::new(),
             show_downloads_panel: false,
-            media_controller,
+            media_controller: None,
             media_rx,
+            playing_source: None,
             clipboard: arboard::Clipboard::new().ok(),
         }
     }

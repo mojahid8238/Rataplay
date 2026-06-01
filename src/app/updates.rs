@@ -1,8 +1,89 @@
 use super::actions;
-use super::{App, AppState, InputMode};
+use super::{App, AppAction, AppState, InputMode};
+use crate::app::app::PlayingSource;
 use crate::model::download::DownloadEvent;
 use crate::sys::media::MediaEvent;
 use crate::sys::yt;
+
+pub fn skip_to_video(app: &mut App, direction: i32) {
+    if direction > 0 {
+        log::info!("MPRIS Next");
+    } else {
+        log::info!("MPRIS Previous");
+    }
+
+    let source = match app.playing_source {
+        Some(s) => s,
+        None => {
+            log::info!("No playing source, cannot skip");
+            return;
+        }
+    };
+
+    // For Previous: if playback_time > 3.0, just restart current track
+    if direction < 0 && app.playback_time > 3.0 {
+        actions::send_command(app, "{\"command\": [\"set_property\", \"time-pos\", 0]}\n");
+        app.status_message = Some("Restarted.".to_string());
+        return;
+    }
+
+    let (new_idx, url, title) = match source {
+        PlayingSource::SearchResults(current) => {
+            let new = if direction > 0 {
+                current.checked_add(1)
+            } else {
+                current.checked_sub(1)
+            };
+            let new = match new {
+                Some(i) => i,
+                None => return,
+            };
+            if new >= app.search_results.len() {
+                return;
+            }
+            let video = match app.search_results.get(new) {
+                Some(v) => v,
+                None => return,
+            };
+            let url = format!("{}::best", video.url);
+            (new, url, video.title.clone())
+        }
+        PlayingSource::LocalFiles(current) => {
+            let new = if direction > 0 {
+                current.checked_add(1)
+            } else {
+                current.checked_sub(1)
+            };
+            let new = match new {
+                Some(i) => i,
+                None => return,
+            };
+            if new >= app.local_files.len() {
+                return;
+            }
+            let file = match app.local_files.get(new) {
+                Some(f) => f,
+                None => return,
+            };
+            let url = file.path.to_string_lossy().to_string();
+            (new, url, file.name.clone())
+        }
+    };
+
+    actions::stop_playback(app);
+
+    let action = if app.playback_is_audio {
+        AppAction::ListenAudio
+    } else {
+        AppAction::WatchExternal
+    };
+
+    app.pending_action = Some((action, url, title));
+    app.playing_source = Some(match source {
+        PlayingSource::SearchResults(_) => PlayingSource::SearchResults(new_idx),
+        PlayingSource::LocalFiles(_) => PlayingSource::LocalFiles(new_idx),
+    });
+}
 
 pub fn on_tick(app: &mut App) {
     // Update Pet Animation
@@ -246,10 +327,10 @@ pub fn on_tick(app: &mut App) {
                 actions::stop_playback(app);
             }
             MediaEvent::Next => {
-                actions::send_command(app, "{\"command\": [\"seek\", 10, \"relative\"]}\n");
+                skip_to_video(app, 1);
             }
             MediaEvent::Previous => {
-                actions::send_command(app, "{\"command\": [\"seek\", -10, \"relative\"]}\n");
+                skip_to_video(app, -1);
             }
         }
     }
@@ -269,9 +350,8 @@ pub fn on_tick(app: &mut App) {
             app.terminal_loading_error = None;
             app.terminal_ready_url = None;
             app.status_message = Some("Stopped.".to_string());
-            if let Some(mc) = &mut app.media_controller {
-                let _ = mc.set_playback_status(false);
-            }
+            app.playing_source = None;
+            app.destroy_media();
         }
     }
 

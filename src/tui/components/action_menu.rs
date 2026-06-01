@@ -53,9 +53,7 @@ pub fn render_action_menu(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
             let content = Line::from(vec![
                 Span::styled(
                     format!(" [{}] ", key_str),
-                    Style::default()
-                        .fg(app.theme.highlight)
-                        
+                    Style::default().fg(app.theme.highlight),
                 ),
                 Span::raw(action.name),
             ]);

@@ -116,10 +116,7 @@ pub fn render_settings_menu(f: &mut Frame, app: &mut App, area: Rect) {
             };
 
             let content = Line::from(vec![
-                Span::styled(
-                    format!("{:<22}: ", item.name()),
-                    Style::default()
-                ),
+                Span::styled(format!("{:<22}: ", item.name()), Style::default()),
                 Span::styled(value, Style::default().fg(app.theme.accent)),
             ]);
             ListItem::new(content)
@@ -207,11 +204,7 @@ fn render_input_popup(f: &mut Frame, app: &App, item: SettingItem) {
         .collect();
 
     let input = Paragraph::new(display_text)
-        .style(
-            Style::default()
-                .fg(app.theme.accent)
-                
-        )
+        .style(Style::default().fg(app.theme.accent))
         .block(block);
 
     f.render_widget(input, area);

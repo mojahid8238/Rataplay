@@ -42,11 +42,7 @@ fn render_active_downloads(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
         Cell::from("ETA"),
         Cell::from("STATUS"),
     ])
-    .style(
-        Style::default()
-            .fg(app.theme.accent)
-            
-    )
+    .style(Style::default().fg(app.theme.accent))
     .height(1)
     .bottom_margin(1);
 
@@ -149,11 +145,7 @@ fn render_local_files(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
         Cell::from("FORMAT"),
         Cell::from("STATUS"),
     ])
-    .style(
-        Style::default()
-            .fg(app.theme.accent)
-            
-    )
+    .style(Style::default().fg(app.theme.accent))
     .height(1)
     .bottom_margin(1);
 

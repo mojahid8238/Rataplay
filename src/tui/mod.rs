@@ -190,12 +190,7 @@ fn render_download_gauge(f: &mut Frame, app: &App, progress: f32, status: &str, 
         );
 
         let label = format!(" {} {:.0}% ", status, progress * 100.0);
-        let label_span = Span::styled(
-            label,
-            Style::default()
-                .fg(app.theme.fg)
-
-        );
+        let label_span = Span::styled(label, Style::default().fg(app.theme.fg));
 
         // We can't easily overlay text on our custom progress line in a simple Paragraph
         // so we'll just render them as a Line if there's space.

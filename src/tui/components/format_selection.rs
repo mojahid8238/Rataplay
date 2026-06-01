@@ -29,9 +29,7 @@ pub fn render_format_selection(f: &mut ratatui::Frame, app: &mut App, area: Rect
         .border_style(Style::default().fg(app.theme.highlight))
         .style(Style::default().bg(app.theme.bg));
 
-    let header_style = Style::default()
-        .fg(app.theme.accent)
-        ;
+    let header_style = Style::default().fg(app.theme.accent);
 
     let mut header_cells = vec![Cell::from(" QUALITY")];
     if app.format_selection_mode == crate::app::state::FormatSelectionMode::Download {

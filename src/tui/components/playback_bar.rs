@@ -43,17 +43,12 @@ pub fn render_playback_bar(f: &mut ratatui::Frame, app: &App, area: Rect) {
     let p = Paragraph::new(Line::from(vec![
         Span::styled(
             status_str,
-            Style::default()
-                .fg(Color::Black)
-                .bg(status_color)
-                
+            Style::default().fg(Color::Black).bg(status_color),
         ),
         Span::raw(" "),
         Span::styled(
             format!("[{}] ", duration_str),
-            Style::default()
-                .fg(app.theme.highlight)
-                
+            Style::default().fg(app.theme.highlight),
         ),
         Span::styled(
             displayed_title,
@@ -62,26 +57,11 @@ pub fn render_playback_bar(f: &mut ratatui::Frame, app: &App, area: Rect) {
                 .add_modifier(Modifier::ITALIC),
         ),
         Span::raw(" | "),
-        Span::styled(
-            "p",
-            Style::default()
-                .fg(app.theme.highlight)
-                
-        ),
+        Span::styled("p", Style::default().fg(app.theme.highlight)),
         Span::raw(": Pause | "),
-        Span::styled(
-            "Arrows",
-            Style::default()
-                .fg(app.theme.highlight)
-                
-        ),
+        Span::styled("Arrows", Style::default().fg(app.theme.highlight)),
         Span::raw(": Seek | "),
-        Span::styled(
-            "x",
-            Style::default()
-                .fg(app.theme.highlight)
-                
-        ),
+        Span::styled("x", Style::default().fg(app.theme.highlight)),
         Span::raw(": Stop"),
     ]))
     .block(
