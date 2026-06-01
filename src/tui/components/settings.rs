@@ -118,7 +118,7 @@ pub fn render_settings_menu(f: &mut Frame, app: &mut App, area: Rect) {
             let content = Line::from(vec![
                 Span::styled(
                     format!("{:<22}: ", item.name()),
-                    Style::default().add_modifier(Modifier::BOLD),
+                    Style::default()
                 ),
                 Span::styled(value, Style::default().fg(app.theme.accent)),
             ]);
@@ -128,13 +128,8 @@ pub fn render_settings_menu(f: &mut Frame, app: &mut App, area: Rect) {
 
     let list = List::new(list_items)
         .block(block)
-        .highlight_style(
-            Style::default()
-                .bg(app.theme.highlight)
-                .fg(app.theme.fg)
-                .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("┃ ");
+        .highlight_style(app.theme.selected_style())
+        .highlight_symbol(app.theme.selected_symbol());
 
     let area = centered_rect_fixed(60, (items.len() + 2) as u16, area);
     app.settings_area = Some(area);
@@ -166,15 +161,12 @@ fn render_date_filter_popup(f: &mut Frame, app: &App) {
         .enumerate()
         .map(|(i, name)| {
             let style = if i == app.date_filter_selection_index {
-                Style::default()
-                    .bg(app.theme.highlight)
-                    .fg(app.theme.fg)
-                    .add_modifier(Modifier::BOLD)
+                app.theme.selected_style()
             } else {
                 Style::default().fg(app.theme.fg)
             };
             let prefix = if i == app.date_filter_selection_index {
-                "┃ "
+                "● "
             } else {
                 "  "
             };
@@ -216,7 +208,7 @@ fn render_input_popup(f: &mut Frame, app: &App, item: SettingItem) {
         .style(
             Style::default()
                 .fg(app.theme.accent)
-                .add_modifier(Modifier::BOLD),
+                
         )
         .block(block);
 

@@ -1,7 +1,7 @@
 use crossterm::event::KeyCode;
 use ratatui::{
     prelude::Rect,
-    style::{Modifier, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, List, ListItem},
 };
@@ -55,7 +55,7 @@ pub fn render_action_menu(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
                     format!(" [{}] ", key_str),
                     Style::default()
                         .fg(app.theme.highlight)
-                        .add_modifier(Modifier::BOLD),
+                        
                 ),
                 Span::raw(action.name),
             ]);
@@ -65,13 +65,8 @@ pub fn render_action_menu(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
 
     let list = List::new(items)
         .block(block)
-        .highlight_style(
-            Style::default()
-                .bg(app.theme.highlight)
-                .fg(app.theme.fg)
-                .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("┃ ");
+        .highlight_style(app.theme.selected_style())
+        .highlight_symbol(app.theme.selected_symbol());
 
     f.render_stateful_widget(list, area, &mut app.action_menu_state);
 }

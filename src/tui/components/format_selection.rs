@@ -1,7 +1,7 @@
 use ratatui::{
     layout::Constraint,
     prelude::Rect,
-    style::{Modifier, Style},
+    style::Style,
     widgets::{Block, BorderType, Borders, Cell, Row, Table},
 };
 
@@ -31,7 +31,7 @@ pub fn render_format_selection(f: &mut ratatui::Frame, app: &mut App, area: Rect
 
     let header_style = Style::default()
         .fg(app.theme.accent)
-        .add_modifier(Modifier::BOLD);
+        ;
 
     let mut header_cells = vec![Cell::from(" QUALITY")];
     if app.format_selection_mode == crate::app::state::FormatSelectionMode::Download {
@@ -104,13 +104,8 @@ pub fn render_format_selection(f: &mut ratatui::Frame, app: &mut App, area: Rect
     let table = Table::new(rows, constraints)
         .header(header)
         .block(block)
-        .row_highlight_style(
-            Style::default()
-                .bg(app.theme.highlight)
-                .fg(app.theme.fg)
-                .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("┃ ");
+        .row_highlight_style(app.theme.selected_style())
+        .highlight_symbol(app.theme.selected_symbol());
 
     app.format_selection_state.select(selected_index);
     f.render_stateful_widget(table, area, &mut app.format_selection_state);

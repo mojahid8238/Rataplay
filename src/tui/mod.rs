@@ -3,7 +3,7 @@ use crate::model::download::DownloadStatus;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::*,
 };
@@ -194,7 +194,7 @@ fn render_download_gauge(f: &mut Frame, app: &App, progress: f32, status: &str, 
             label,
             Style::default()
                 .fg(app.theme.fg)
-                .add_modifier(Modifier::BOLD),
+
         );
 
         // We can't easily overlay text on our custom progress line in a simple Paragraph

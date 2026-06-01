@@ -1,6 +1,6 @@
 use ratatui::{
     prelude::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, List, ListItem, Paragraph, Wrap},
 };
@@ -51,19 +51,19 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                         index_prefix,
                         Style::default()
                             .fg(app.theme.fg)
-                            .add_modifier(Modifier::BOLD),
+                            
                     ),
                     Span::styled(
                         tag,
                         Style::default()
                             .fg(app.theme.highlight)
-                            .add_modifier(Modifier::BOLD),
+                            
                     ),
                     Span::styled(
                         display_title,
                         Style::default()
                             .fg(app.theme.highlight)
-                            .add_modifier(Modifier::BOLD),
+                            
                     ),
                 ])
             } else if let Some(live_status) = &v.live_status {
@@ -88,12 +88,12 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                         index_prefix,
                         Style::default()
                             .fg(app.theme.fg)
-                            .add_modifier(Modifier::BOLD),
+                            
                     ),
                     if !tag.is_empty() {
                         Span::styled(
                             tag,
-                            Style::default().fg(tag_color).add_modifier(Modifier::BOLD),
+                            Style::default().fg(tag_color)
                         )
                     } else {
                         Span::raw("")
@@ -102,7 +102,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                         display_title,
                         Style::default()
                             .fg(app.theme.fg)
-                            .add_modifier(Modifier::BOLD),
+                            
                     ),
                 ])
             } else if v.parent_playlist_id.is_some() {
@@ -115,19 +115,19 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                         index_prefix,
                         Style::default()
                             .fg(app.theme.fg)
-                            .add_modifier(Modifier::BOLD),
+                            
                     ),
                     Span::styled(
                         tag,
                         Style::default()
                             .fg(app.theme.accent)
-                            .add_modifier(Modifier::BOLD),
+                            
                     ),
                     Span::styled(
                         display_title,
                         Style::default()
                             .fg(app.theme.fg)
-                            .add_modifier(Modifier::BOLD),
+                            
                     ),
                 ])
             } else {
@@ -139,13 +139,13 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                         index_prefix,
                         Style::default()
                             .fg(app.theme.fg)
-                            .add_modifier(Modifier::BOLD),
+                            
                     ),
                     Span::styled(
                         display_title,
                         Style::default()
                             .fg(app.theme.fg)
-                            .add_modifier(Modifier::BOLD),
+                            
                     ),
                 ])
             };
@@ -195,19 +195,13 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
         .collect();
 
     if !app.search_results.is_empty() && (!app.is_url_mode || app.is_playlist_mode) {
-        items.push(ListItem::new(vec![
-            Line::from(""),
-            Line::from(vec![
-                Span::raw("    "),
-                Span::styled(
-                    " [ Load More Results... ] ",
-                    Style::default()
-                        .fg(app.theme.highlight)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ]),
-            Line::from(""),
-        ]));
+        items.push(ListItem::new(vec![Line::from(vec![
+            Span::styled(
+                " [ Load More Results... ] ",
+                Style::default()
+                    .fg(app.theme.highlight),
+            ),
+        ])]));
     }
 
     let list = List::new(items)
@@ -223,21 +217,15 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                 }),
         )
         .highlight_style(if app.state == AppState::Results {
-            Style::default()
-                .bg(app.theme.highlight)
-                .fg(app.theme.fg)
-                .add_modifier(Modifier::BOLD)
+            app.theme.selected_style()
         } else {
-            Style::default().bg(app.theme.bg).fg(Color::Gray)
+            Style::default().fg(Color::DarkGray)
         })
-        .highlight_symbol(Span::styled(
-            "┃ ",
-            Style::default().fg(if app.state == AppState::Results {
-                app.theme.highlight
-            } else {
-                Color::DarkGray
-            }),
-        ));
+        .highlight_symbol(if app.state == AppState::Results {
+            app.theme.selected_symbol()
+        } else {
+            Span::styled("● ", Style::default().fg(Color::DarkGray))
+        });
 
     app.main_list_state.select(app.selected_result_index);
     f.render_stateful_widget(list, chunks[0], &mut app.main_list_state);
@@ -291,7 +279,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                     "Playlist: ",
                                     Style::default()
                                         .fg(app.theme.accent)
-                                        .add_modifier(Modifier::BOLD),
+                                        
                                 ),
                                 Span::styled(&video.title, Style::default().fg(app.theme.fg)),
                             ]),
@@ -300,7 +288,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                     "Channel: ",
                                     Style::default()
                                         .fg(app.theme.accent)
-                                        .add_modifier(Modifier::BOLD),
+                                        
                                 ),
                                 Span::styled(&video.channel, Style::default().fg(app.theme.fg)),
                             ]),
@@ -309,7 +297,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                     "Videos: ",
                                     Style::default()
                                         .fg(app.theme.accent)
-                                        .add_modifier(Modifier::BOLD),
+                                        
                                 ),
                                 Span::styled(
                                     video.playlist_count.unwrap_or(0).to_string(),
@@ -322,7 +310,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                 Style::default()
                                     .fg(Color::Black)
                                     .bg(app.theme.highlight)
-                                    .add_modifier(Modifier::BOLD),
+                                    
                             )]),
                         ];
                         let p = Paragraph::new(text_lines).wrap(Wrap { trim: true }).block(
@@ -347,7 +335,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                     "Title: ",
                                     Style::default()
                                         .fg(app.theme.accent)
-                                        .add_modifier(Modifier::BOLD),
+                                        
                                 ),
                                 Span::styled(&video.title, Style::default().fg(app.theme.fg)),
                             ]),
@@ -356,7 +344,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                     "Channel: ",
                                     Style::default()
                                         .fg(app.theme.accent)
-                                        .add_modifier(Modifier::BOLD),
+                                        
                                 ),
                                 Span::styled(&video.channel, Style::default().fg(app.theme.fg)),
                             ]),
@@ -376,7 +364,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                         "Watching: ",
                                         Style::default()
                                             .fg(app.theme.accent)
-                                            .add_modifier(Modifier::BOLD),
+                                            
                                     ),
                                     Span::styled(viewers_fmt, Style::default().fg(Color::Red)),
                                 ]));
@@ -392,7 +380,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                     "Duration: ",
                                     Style::default()
                                         .fg(app.theme.accent)
-                                        .add_modifier(Modifier::BOLD),
+                                        
                                 ),
                                 Span::styled(
                                     &video.duration_string,
@@ -404,7 +392,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                     "Views: ",
                                     Style::default()
                                         .fg(app.theme.accent)
-                                        .add_modifier(Modifier::BOLD),
+                                        
                                 ),
                                 Span::styled(views_fmt, Style::default().fg(app.theme.fg)),
                             ]));
@@ -425,7 +413,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                     "Likes: ",
                                     Style::default()
                                         .fg(app.theme.accent)
-                                        .add_modifier(Modifier::BOLD),
+                                        
                                 ),
                                 Span::styled(likes_str, Style::default().fg(app.theme.fg)),
                             ]));
@@ -441,7 +429,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                 "Uploaded: ",
                                 Style::default()
                                     .fg(app.theme.accent)
-                                    .add_modifier(Modifier::BOLD),
+                                    
                             ),
                             Span::styled(upload_date, Style::default().fg(app.theme.fg)),
                         ]));
@@ -452,7 +440,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                     "From Playlist: ",
                                     Style::default()
                                         .fg(app.theme.accent)
-                                        .add_modifier(Modifier::BOLD),
+                                        
                                 ),
                                 Span::styled(playlist_title, Style::default().fg(app.theme.fg)),
                             ]));
@@ -472,7 +460,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
                                     Style::default()
                                         .fg(Color::Black)
                                         .bg(Color::Red)
-                                        .add_modifier(Modifier::BOLD),
+                                        
                                 )]));
                             }
                         }
@@ -602,7 +590,7 @@ pub fn render_greeting_section(f: &mut ratatui::Frame, app: &App, area: Rect) {
                 " [ / ] ",
                 Style::default()
                     .fg(app.theme.highlight)
-                    .add_modifier(Modifier::BOLD),
+                    
             ),
             Span::styled("Focus Search", Style::default().fg(Color::DarkGray)),
             Span::raw("    "),
@@ -610,7 +598,7 @@ pub fn render_greeting_section(f: &mut ratatui::Frame, app: &App, area: Rect) {
                 " [ Enter ] ",
                 Style::default()
                     .fg(app.theme.highlight)
-                    .add_modifier(Modifier::BOLD),
+                    
             ),
             Span::styled("Select / Actions", Style::default().fg(Color::DarkGray)),
         ]),
@@ -619,7 +607,7 @@ pub fn render_greeting_section(f: &mut ratatui::Frame, app: &App, area: Rect) {
                 " [ d ] ",
                 Style::default()
                     .fg(app.theme.highlight)
-                    .add_modifier(Modifier::BOLD),
+                    
             ),
             Span::styled("Downloads", Style::default().fg(Color::DarkGray)),
             Span::raw("       "),
@@ -627,7 +615,7 @@ pub fn render_greeting_section(f: &mut ratatui::Frame, app: &App, area: Rect) {
                 " [ Ctrl+t ] ",
                 Style::default()
                     .fg(app.theme.highlight)
-                    .add_modifier(Modifier::BOLD),
+                    
             ),
             Span::styled("Cycle Themes", Style::default().fg(Color::DarkGray)),
         ]),
@@ -636,7 +624,7 @@ pub fn render_greeting_section(f: &mut ratatui::Frame, app: &App, area: Rect) {
                 " [ Ctrl+a ] ",
                 Style::default()
                     .fg(app.theme.highlight)
-                    .add_modifier(Modifier::BOLD),
+                    
             ),
             Span::styled("Toggle Animations", Style::default().fg(Color::DarkGray)),
             Span::raw("    "),
@@ -644,7 +632,7 @@ pub fn render_greeting_section(f: &mut ratatui::Frame, app: &App, area: Rect) {
                 " [ q ] ",
                 Style::default()
                     .fg(app.theme.highlight)
-                    .add_modifier(Modifier::BOLD),
+                    
             ),
             Span::styled("Quit", Style::default().fg(Color::DarkGray)),
         ]),

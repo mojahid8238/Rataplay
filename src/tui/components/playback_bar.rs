@@ -46,14 +46,14 @@ pub fn render_playback_bar(f: &mut ratatui::Frame, app: &App, area: Rect) {
             Style::default()
                 .fg(Color::Black)
                 .bg(status_color)
-                .add_modifier(Modifier::BOLD),
+                
         ),
         Span::raw(" "),
         Span::styled(
             format!("[{}] ", duration_str),
             Style::default()
                 .fg(app.theme.highlight)
-                .add_modifier(Modifier::BOLD),
+                
         ),
         Span::styled(
             displayed_title,
@@ -66,21 +66,21 @@ pub fn render_playback_bar(f: &mut ratatui::Frame, app: &App, area: Rect) {
             "p",
             Style::default()
                 .fg(app.theme.highlight)
-                .add_modifier(Modifier::BOLD),
+                
         ),
         Span::raw(": Pause | "),
         Span::styled(
             "Arrows",
             Style::default()
                 .fg(app.theme.highlight)
-                .add_modifier(Modifier::BOLD),
+                
         ),
         Span::raw(": Seek | "),
         Span::styled(
             "x",
             Style::default()
                 .fg(app.theme.highlight)
-                .add_modifier(Modifier::BOLD),
+                
         ),
         Span::raw(": Stop"),
     ]))

@@ -1,6 +1,6 @@
 use ratatui::{
     prelude::Rect,
-    style::{Modifier, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{Block, BorderType, Borders, List, ListItem},
 };
@@ -40,35 +40,13 @@ pub fn render_download_dialog(f: &mut ratatui::Frame, app: &mut App, area: Rect)
 
     let list_items: Vec<ListItem> = items
         .iter()
-        .enumerate()
-        .map(|(i, text)| {
-            let prefix = if i == app.download_dialog_index {
-                " ┃ "
-            } else {
-                "   "
-            };
-            let content = Line::from(vec![
-                Span::styled(
-                    prefix,
-                    Style::default()
-                        .fg(app.theme.highlight)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(*text),
-            ]);
-            ListItem::new(content)
-        })
+        .map(|text| ListItem::new(Line::from(Span::raw(*text))))
         .collect();
 
     let list = List::new(list_items)
         .block(block)
-        .highlight_style(
-            Style::default()
-                .bg(app.theme.highlight)
-                .fg(app.theme.fg)
-                .add_modifier(Modifier::BOLD),
-        )
-        .highlight_symbol("");
+        .highlight_style(app.theme.selected_style())
+        .highlight_symbol(app.theme.selected_symbol());
 
     let mut list_state = ratatui::widgets::ListState::default();
     list_state.select(Some(app.download_dialog_index));

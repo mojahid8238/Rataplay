@@ -1,6 +1,6 @@
 use ratatui::{
     prelude::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Style},
     text::Span,
     widgets::{Block, BorderType, Borders, Cell, Row, Table},
 };
@@ -45,7 +45,7 @@ fn render_active_downloads(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     .style(
         Style::default()
             .fg(app.theme.accent)
-            .add_modifier(Modifier::BOLD),
+            
     )
     .height(1)
     .bottom_margin(1);
@@ -59,7 +59,7 @@ fn render_active_downloads(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
         .map(|(i, task)| {
             let is_focused =
                 app.state == AppState::Downloads && app.selected_download_index == Some(i);
-            let indicator = if is_focused { "┃ " } else { "  " };
+            let indicator = if is_focused { "● " } else { "  " };
             let checkbox = if app.selected_download_indices.contains(&i) {
                 "[x] "
             } else {
@@ -86,10 +86,7 @@ fn render_active_downloads(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
             };
 
             let row_style = if is_focused {
-                Style::default()
-                    .bg(app.theme.highlight)
-                    .fg(app.theme.fg)
-                    .add_modifier(Modifier::BOLD)
+                app.theme.selected_style()
             } else {
                 Style::default()
             };
@@ -154,7 +151,7 @@ fn render_local_files(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     .style(
         Style::default()
             .fg(app.theme.accent)
-            .add_modifier(Modifier::BOLD),
+            
     )
     .height(1)
     .bottom_margin(1);
@@ -168,7 +165,7 @@ fn render_local_files(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
                 app.state == AppState::Downloads && app.selected_local_file_index == Some(i);
             let is_selected = app.selected_local_file_indices.contains(&i);
 
-            let indicator = if is_focused { "┃ " } else { "  " };
+            let indicator = if is_focused { "● " } else { "  " };
             let checkbox = if is_selected { "[x] " } else { "[ ] " };
 
             let status_span = if file.is_garbage {
@@ -178,10 +175,7 @@ fn render_local_files(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
             };
 
             let row_style = if is_focused {
-                Style::default()
-                    .bg(app.theme.highlight)
-                    .fg(app.theme.fg)
-                    .add_modifier(Modifier::BOLD)
+                app.theme.selected_style()
             } else {
                 Style::default()
             };

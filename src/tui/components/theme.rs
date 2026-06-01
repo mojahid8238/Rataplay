@@ -1,4 +1,5 @@
-use ratatui::style::Color;
+use ratatui::style::{Color, Modifier, Style};
+use ratatui::text::Span;
 
 #[derive(Clone, Copy)]
 pub struct Theme {
@@ -8,6 +9,18 @@ pub struct Theme {
     pub accent: Color,
     pub highlight: Color,
     pub border: Color,
+}
+
+impl Theme {
+    pub fn selected_style(&self) -> Style {
+        Style::default()
+            .fg(self.highlight)
+            .add_modifier(Modifier::BOLD)
+    }
+
+    pub fn selected_symbol(&self) -> Span<'static> {
+        Span::styled("● ", Style::default().fg(self.highlight))
+    }
 }
 
 pub const DEFAULT_THEME: Theme = Theme {
