@@ -60,7 +60,7 @@ pub fn play_video(
     } else {
         // Detached / background
         cmd.arg("--force-window=yes");
-        cmd.arg("--fs");
+        cmd.arg("--window-maximized=yes");
 
         if is_audio_path(url) {
             // Add visualizer for audio files in external window
