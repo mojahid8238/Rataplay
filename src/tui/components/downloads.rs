@@ -88,7 +88,7 @@ fn render_active_downloads(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
             let row_style = if is_focused {
                 app.theme.selected_style()
             } else {
-                Style::default()
+                Style::default().fg(app.theme.fg)
             };
 
             let title_avail = (area.width as f64 * 0.3).round() as usize;
@@ -127,6 +127,7 @@ fn render_active_downloads(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     .header(header)
     .block(
         Block::default()
+            .style(Style::default().bg(app.theme.bg).fg(app.theme.fg))
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .title(" Active Tasks "),
@@ -177,7 +178,7 @@ fn render_local_files(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
             let row_style = if is_focused {
                 app.theme.selected_style()
             } else {
-                Style::default()
+                Style::default().fg(app.theme.fg)
             };
 
             let name_avail = (area.width as f64 * 0.5).round() as usize;
@@ -206,6 +207,7 @@ fn render_local_files(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     .header(header)
     .block(
         Block::default()
+            .style(Style::default().bg(app.theme.bg).fg(app.theme.fg))
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .title(" Local Files "),

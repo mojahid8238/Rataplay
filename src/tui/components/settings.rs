@@ -154,7 +154,8 @@ fn render_date_filter_popup(f: &mut Frame, app: &App) {
         .title(" Filter Search ")
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(app.theme.accent));
+        .style(Style::default().bg(app.theme.bg).fg(app.theme.fg))
+        .border_style(Style::default().fg(app.theme.highlight));
 
     let items: Vec<ListItem> = DATE_FILTER_OPTIONS
         .iter()
@@ -191,7 +192,8 @@ fn render_input_popup(f: &mut Frame, app: &App, item: SettingItem) {
         .title(format!(" Edit {} ", item.name()))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(app.theme.accent));
+        .style(Style::default().bg(app.theme.bg).fg(app.theme.fg))
+        .border_style(Style::default().fg(app.theme.highlight));
 
     let width = (area.width as usize).saturating_sub(2);
     let scroll = app
