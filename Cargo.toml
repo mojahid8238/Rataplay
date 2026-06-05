@@ -1,6 +1,6 @@
 [package]
 name = "rataplay"
-version = "1.5.1-beta"
+version = "1.5.1"
 edition = "2024"
 description = "A high-performance Rust TUI for YouTube playback and management"
 license = "GPL-3.0-only"
