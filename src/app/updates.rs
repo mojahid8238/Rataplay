@@ -70,10 +70,18 @@ pub fn skip_to_video(app: &mut App, direction: i32) {
         }
     };
 
+    let was_audio = app.playback_is_audio;
+    let was_terminal = app.playback_is_terminal;
+
     actions::stop_playback(app);
 
-    let action = if app.playback_is_audio {
+    let action = if was_audio {
         AppAction::ListenAudio
+    } else if was_terminal {
+        match source {
+            PlayingSource::LocalFiles(_) => AppAction::PlayLocalTerminal,
+            _ => AppAction::WatchInTerminal,
+        }
     } else {
         AppAction::WatchExternal
     };

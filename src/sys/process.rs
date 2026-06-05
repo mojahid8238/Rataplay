@@ -27,11 +27,13 @@ pub fn play_video(
 
     if let Some(ua) = user_agent {
         cmd.arg(format!("--user-agent={}", ua));
-        // Also set ytdl=no to avoid double extraction which often causes 403
+    }
+
+    if in_terminal {
+        // ytdl=no to avoid double extraction (URL is already a direct stream)
         cmd.arg("--ytdl=no");
     }
 
-    // Common IPC setup
     // Common IPC setup
     let socket_path = if cfg!(windows) {
         format!(r"\\.\pipe\rataplay-mpv-{}", std::process::id())
@@ -99,11 +101,15 @@ pub fn play_video(
     Ok(child)
 }
 
-pub fn play_audio(url: &str, settings: &Settings) -> Result<Child> {
+pub fn play_audio(url: &str, user_agent: Option<&str>, settings: &Settings) -> Result<Child> {
     let mut cmd = Command::new(settings.mpv_cmd());
     cmd.arg("--no-video");
     cmd.arg("--ytdl-format=bestaudio/best");
     cmd.kill_on_drop(true);
+
+    if let Some(ua) = user_agent {
+        cmd.arg(format!("--user-agent={}", ua));
+    }
 
     // Common IPC setup
     let socket_path = if cfg!(windows) {

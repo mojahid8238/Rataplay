@@ -428,6 +428,7 @@ pub fn stop_playback(app: &mut App) {
     app.playback_duration_str = None;
     app.is_paused = false;
     app.playback_is_audio = false;
+    app.playback_is_terminal = false;
     app.is_finishing = false;
     app.terminal_loading = false;
     app.terminal_loading_error = None;
@@ -478,6 +479,7 @@ pub fn send_command(app: &App, cmd: &str) {
 }
 
 pub fn start_terminal_loading(app: &mut App, url: String, _title: String) {
+    app.playback_is_terminal = true;
     app.terminal_loading = true;
     app.terminal_loading_progress = 0.0;
     app.terminal_loading_error = None;

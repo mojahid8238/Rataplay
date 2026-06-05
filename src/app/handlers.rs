@@ -859,6 +859,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                                             app.pending_action =
                                                 Some((AppAction::ListenAudio, path, name));
                                         } else {
+                                            app.playback_is_terminal = true;
                                             app.terminal_ready_url = Some(path);
                                         }
                                         app.state = app.previous_app_state;

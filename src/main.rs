@@ -9,7 +9,7 @@ use anyhow::Result;
 use app::app::PlayingSource;
 use app::{
     App, AppAction, handle_key_event, handle_mouse_event, handle_paste, on_tick, perform_search,
-    stop_playback,
+    start_terminal_loading, stop_playback,
 };
 use clap::Parser;
 use cli::Cli;
@@ -21,11 +21,26 @@ use crossterm::{
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
 use ratatui_image::picker::Picker;
+use std::process::Command as SyncCommand;
 use std::process::exit;
 use std::{
     io,
     time::{Duration, Instant},
 };
+
+fn get_user_agent(settings: &Settings) -> Option<String> {
+    let out = SyncCommand::new(settings.ytdlp_cmd())
+        .arg("--dump-user-agent")
+        .output()
+        .ok()?;
+    if out.status.success() {
+        let ua = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if !ua.is_empty() {
+            return Some(ua);
+        }
+    }
+    None
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -281,7 +296,8 @@ async fn main() -> Result<()> {
                             (full_url.to_string(), None)
                         };
 
-                        match sys::process::play_video(&final_url, format_id.as_deref(), false, None, &settings) {
+                        let ua = get_user_agent(&app.settings);
+                        match sys::process::play_video(&final_url, format_id.as_deref(), false, ua.as_deref(), &app.settings) {
                             Ok(child) => {
                                 let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                                 let (res_tx, res_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -315,7 +331,8 @@ async fn main() -> Result<()> {
                         }
                     }
                     AppAction::ListenAudio => {
-                        match sys::process::play_audio(&full_url.to_string(), &settings) {
+                        let ua = get_user_agent(&app.settings);
+                        match sys::process::play_audio(&full_url.to_string(), ua.as_deref(), &app.settings) {
                             Ok(child) => {
                                 let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                                 let (res_tx, res_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -348,6 +365,18 @@ async fn main() -> Result<()> {
                             }
                         }
                     }
+                    AppAction::PlayLocalTerminal => {
+                        app.playback_is_terminal = true;
+                        app.terminal_ready_url = Some(full_url);
+                    }
+                    AppAction::WatchInTerminal => {
+                        let clean_url = if full_url.contains("::") {
+                            full_url.splitn(2, "::").next().unwrap_or(&full_url).to_string()
+                        } else {
+                            full_url.to_string()
+                        };
+                        start_terminal_loading(&mut app, clean_url, title);
+                    }
                     _ => {}
                 }
             }
@@ -370,9 +399,11 @@ async fn main() -> Result<()> {
                     (url.as_str(), None)
                 };
 
-                if let Ok(mut child) = sys::process::play_video(final_url, None, true, ua, &settings) {
+                match sys::process::play_video(final_url, None, true, ua, &settings) {
+                    Ok(mut child) => {
                     // Update media controller
                     app.init_media();
+                    app.playback_is_terminal = true;
                     if app.playing_source.is_none() {
                         app.playing_source = app.selected_result_index.map(PlayingSource::SearchResults)
                             .or_else(|| app.selected_local_file_index.map(PlayingSource::LocalFiles));
@@ -452,6 +483,12 @@ async fn main() -> Result<()> {
                     }
 
                     app.destroy_media();
+                    }
+                    Err(e) => {
+                        log::error!("Failed to start terminal playback: {}", e);
+                        app.status_message =
+                            Some(format!("Failed to start playback: {}", e));
+                    }
                 }
 
                 // Resume TUI
