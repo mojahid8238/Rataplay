@@ -9,10 +9,10 @@ pub fn refresh_local_files(app: &mut App) {
     if !app.local_files.is_empty() {
         if app.selected_local_file_index.is_none() {
             app.selected_local_file_index = Some(0);
-        } else if let Some(idx) = app.selected_local_file_index {
-            if idx >= app.local_files.len() {
-                app.selected_local_file_index = Some(app.local_files.len().saturating_sub(1));
-            }
+        } else if let Some(idx) = app.selected_local_file_index
+            && idx >= app.local_files.len()
+        {
+            app.selected_local_file_index = Some(app.local_files.len().saturating_sub(1));
         }
     } else {
         app.selected_local_file_index = None;
@@ -31,96 +31,95 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
     // Local Actions (High Priority if in Downloads view)
     if current_context == AppState::Downloads {
         // Actions for Local Files
-        if let Some(idx) = app.selected_local_file_index {
-            if let Some(file) = app.local_files.get(idx) {
-                if !file.is_garbage {
-                    actions.push(Action::new(
-                        KeyCode::Char('w'),
-                        "Play (External)",
-                        AppAction::PlayLocalExternal,
-                    ));
-                    actions.push(Action::new(
-                        KeyCode::Char('t'),
-                        "Play (Terminal/Default)",
-                        AppAction::PlayLocalTerminal,
-                    ));
-                    actions.push(Action::new(
-                        KeyCode::Char('a'),
-                        "Play (Audio)",
-                        AppAction::PlayLocalAudio,
-                    ));
-                }
+        if let Some(idx) = app.selected_local_file_index
+            && let Some(file) = app.local_files.get(idx)
+        {
+            if !file.is_garbage {
                 actions.push(Action::new(
-                    KeyCode::Char('x'),
-                    "Delete File",
-                    AppAction::DeleteLocalFile,
+                    KeyCode::Char('w'),
+                    "Play (External)",
+                    AppAction::PlayLocalExternal,
+                ));
+                actions.push(Action::new(
+                    KeyCode::Char('t'),
+                    "Play (Terminal/Default)",
+                    AppAction::PlayLocalTerminal,
+                ));
+                actions.push(Action::new(
+                    KeyCode::Char('a'),
+                    "Play (Audio)",
+                    AppAction::PlayLocalAudio,
                 ));
             }
+            actions.push(Action::new(
+                KeyCode::Char('x'),
+                "Delete File",
+                AppAction::DeleteLocalFile,
+            ));
         }
         // Actions for Active Downloads
-        if let Some(idx) = app.selected_download_index {
-            if let Some(task_id) = app.download_manager.task_order.get(idx) {
-                if let Some(task) = app.download_manager.tasks.get(task_id) {
-                    match task.status {
-                        crate::model::download::DownloadStatus::Downloading
-                        | crate::model::download::DownloadStatus::Pending => {
-                            actions.push(Action::new(
-                                KeyCode::Char('p'),
-                                "Pause Download",
-                                AppAction::ResumeDownload,
-                            ));
-                            actions.push(Action::new(
-                                KeyCode::Char('x'),
-                                "Cancel Download",
-                                AppAction::CancelDownload,
-                            ));
-                        }
-                        crate::model::download::DownloadStatus::Paused => {
-                            actions.push(Action::new(
-                                KeyCode::Char('p'),
-                                "Resume Download",
-                                AppAction::ResumeDownload,
-                            ));
-                            actions.push(Action::new(
-                                KeyCode::Char('x'),
-                                "Cancel Download",
-                                AppAction::CancelDownload,
-                            ));
-                        }
-                        crate::model::download::DownloadStatus::Canceled
-                        | crate::model::download::DownloadStatus::Error(_) => {
-                            actions.push(Action::new(
-                                KeyCode::Char('p'),
-                                "Restart Download",
-                                AppAction::ResumeDownload,
-                            ));
-                            actions.push(Action::new(
-                                KeyCode::Char('d'),
-                                "Select Format & Download",
-                                AppAction::Download,
-                            ));
-                            if app.selected_download_indices.is_empty() {
-                                actions.push(Action::new(
-                                    KeyCode::Char('x'),
-                                    "Remove from List",
-                                    AppAction::CancelDownload,
-                                ));
-                            }
-                        }
-                        crate::model::download::DownloadStatus::Finished => {
-                            actions.push(Action::new(
-                                KeyCode::Char('d'),
-                                "Select Format & Redownload",
-                                AppAction::Download,
-                            ));
-                            if app.selected_download_indices.is_empty() {
-                                actions.push(Action::new(
-                                    KeyCode::Char('x'),
-                                    "Remove from List",
-                                    AppAction::CancelDownload,
-                                ));
-                            }
-                        }
+        if let Some(idx) = app.selected_download_index
+            && let Some(task_id) = app.download_manager.task_order.get(idx)
+            && let Some(task) = app.download_manager.tasks.get(task_id)
+        {
+            match task.status {
+                crate::model::download::DownloadStatus::Downloading
+                | crate::model::download::DownloadStatus::Pending => {
+                    actions.push(Action::new(
+                        KeyCode::Char('p'),
+                        "Pause Download",
+                        AppAction::ResumeDownload,
+                    ));
+                    actions.push(Action::new(
+                        KeyCode::Char('x'),
+                        "Cancel Download",
+                        AppAction::CancelDownload,
+                    ));
+                }
+                crate::model::download::DownloadStatus::Paused => {
+                    actions.push(Action::new(
+                        KeyCode::Char('p'),
+                        "Resume Download",
+                        AppAction::ResumeDownload,
+                    ));
+                    actions.push(Action::new(
+                        KeyCode::Char('x'),
+                        "Cancel Download",
+                        AppAction::CancelDownload,
+                    ));
+                }
+                crate::model::download::DownloadStatus::Canceled
+                | crate::model::download::DownloadStatus::Error(_) => {
+                    actions.push(Action::new(
+                        KeyCode::Char('p'),
+                        "Restart Download",
+                        AppAction::ResumeDownload,
+                    ));
+                    actions.push(Action::new(
+                        KeyCode::Char('d'),
+                        "Select Format & Download",
+                        AppAction::Download,
+                    ));
+                    if app.selected_download_indices.is_empty() {
+                        actions.push(Action::new(
+                            KeyCode::Char('x'),
+                            "Remove from List",
+                            AppAction::CancelDownload,
+                        ));
+                    }
+                }
+                crate::model::download::DownloadStatus::Finished => {
+                    actions.push(Action::new(
+                        KeyCode::Char('d'),
+                        "Select Format & Redownload",
+                        AppAction::Download,
+                    ));
+                    if app.selected_download_indices.is_empty() {
+                        actions.push(Action::new(
+                            KeyCode::Char('x'),
+                            "Remove from List",
+                            AppAction::CancelDownload,
+                        ));
                     }
                 }
             }
@@ -200,74 +199,74 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
         return actions;
     }
 
-    if let Some(idx) = app.selected_result_index {
-        if let Some(video) = app.search_results.get(idx) {
-            if video.video_type == crate::model::VideoType::Playlist {
+    if let Some(idx) = app.selected_result_index
+        && let Some(video) = app.search_results.get(idx)
+    {
+        if video.video_type == crate::model::VideoType::Playlist {
+            actions.push(Action::new(
+                KeyCode::Enter,
+                "Open Playlist",
+                AppAction::ViewPlaylist,
+            ));
+            actions.push(Action::new(
+                KeyCode::Char('l'),
+                "Download All (Playlist)",
+                AppAction::DownloadPlaylist,
+            ));
+            actions.push(Action::new(
+                KeyCode::Char('o'),
+                "Open in Browser",
+                AppAction::OpenInBrowser,
+            ));
+            actions.push(Action::new(
+                KeyCode::Char('c'),
+                "Copy URL/Channel ID",
+                AppAction::CopyUrlOrId,
+            ));
+        } else {
+            actions.push(Action::new(
+                KeyCode::Char('w'),
+                "Watch (External)",
+                AppAction::WatchExternal,
+            ));
+            actions.push(Action::new(
+                KeyCode::Char('t'),
+                "Watch (In Terminal)",
+                AppAction::WatchInTerminal,
+            ));
+            actions.push(Action::new(
+                KeyCode::Char('a'),
+                "Listen (Audio Only)",
+                AppAction::ListenAudio,
+            ));
+            actions.push(Action::new(
+                KeyCode::Char('d'),
+                "Download",
+                AppAction::Download,
+            ));
+            actions.push(Action::new(
+                KeyCode::Char('o'),
+                "Open in Browser",
+                AppAction::OpenInBrowser,
+            ));
+            actions.push(Action::new(
+                KeyCode::Char('c'),
+                "Copy URL/Channel ID",
+                AppAction::CopyUrlOrId,
+            ));
+
+            // If this video belongs to a playlist, add playlist options
+            if video.parent_playlist_id.is_some() {
                 actions.push(Action::new(
-                    KeyCode::Enter,
-                    "Open Playlist",
+                    KeyCode::Char('p'),
+                    "Open Parent Playlist",
                     AppAction::ViewPlaylist,
                 ));
                 actions.push(Action::new(
                     KeyCode::Char('l'),
-                    "Download All (Playlist)",
+                    "Download All (Parent Playlist)",
                     AppAction::DownloadPlaylist,
                 ));
-                actions.push(Action::new(
-                    KeyCode::Char('o'),
-                    "Open in Browser",
-                    AppAction::OpenInBrowser,
-                ));
-                actions.push(Action::new(
-                    KeyCode::Char('c'),
-                    "Copy URL/Channel ID",
-                    AppAction::CopyUrlOrId,
-                ));
-            } else {
-                actions.push(Action::new(
-                    KeyCode::Char('w'),
-                    "Watch (External)",
-                    AppAction::WatchExternal,
-                ));
-                actions.push(Action::new(
-                    KeyCode::Char('t'),
-                    "Watch (In Terminal)",
-                    AppAction::WatchInTerminal,
-                ));
-                actions.push(Action::new(
-                    KeyCode::Char('a'),
-                    "Listen (Audio Only)",
-                    AppAction::ListenAudio,
-                ));
-                actions.push(Action::new(
-                    KeyCode::Char('d'),
-                    "Download",
-                    AppAction::Download,
-                ));
-                actions.push(Action::new(
-                    KeyCode::Char('o'),
-                    "Open in Browser",
-                    AppAction::OpenInBrowser,
-                ));
-                actions.push(Action::new(
-                    KeyCode::Char('c'),
-                    "Copy URL/Channel ID",
-                    AppAction::CopyUrlOrId,
-                ));
-
-                // If this video belongs to a playlist, add playlist options
-                if video.parent_playlist_id.is_some() {
-                    actions.push(Action::new(
-                        KeyCode::Char('p'),
-                        "Open Parent Playlist",
-                        AppAction::ViewPlaylist,
-                    ));
-                    actions.push(Action::new(
-                        KeyCode::Char('l'),
-                        "Download All (Parent Playlist)",
-                        AppAction::DownloadPlaylist,
-                    ));
-                }
             }
         }
     }
@@ -280,17 +279,16 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
         ));
     }
 
-    if !app.playlist_stack.is_empty() {
-        if !actions
+    if !app.playlist_stack.is_empty()
+        && !actions
             .iter()
             .any(|a| a.action == AppAction::DownloadPlaylist)
-        {
-            actions.push(Action::new(
-                KeyCode::Char('l'),
-                "Download All (Current View)",
-                AppAction::DownloadPlaylist,
-            ));
-        }
+    {
+        actions.push(Action::new(
+            KeyCode::Char('l'),
+            "Download All (Current View)",
+            AppAction::DownloadPlaylist,
+        ));
     }
 
     actions

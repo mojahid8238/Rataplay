@@ -43,7 +43,7 @@ pub async fn spawn_ipc_handler(
                     let _ = writer.write_all(cmd.as_bytes()).await;
                     let _ = writer.flush().await;
                 }
-                let _ = reader_handle.abort();
+                reader_handle.abort();
             }
             Err(e) => {
                 log::error!("Failed to connect to MPV IPC socket {}: {}", socket_path, e);

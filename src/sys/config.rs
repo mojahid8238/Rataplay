@@ -37,7 +37,7 @@ pub struct Config {
     pub logging: Logging,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct Executables {
     #[serde(default = "default_false")]
     pub enabled: bool,
@@ -48,7 +48,7 @@ pub struct Executables {
     pub js_runtime: Option<PathBuf>,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct Cookies {
     pub enabled: bool,
     #[serde(default)]
@@ -57,8 +57,10 @@ pub struct Cookies {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 #[serde(tag = "type", content = "value")]
+#[derive(Default)]
 pub enum CookieSource {
     #[serde(rename = "off")]
+    #[default]
     Off,
     #[serde(rename = "browser")]
     Browser(String),
@@ -68,13 +70,7 @@ pub enum CookieSource {
     Json(PathBuf),
 }
 
-impl Default for CookieSource {
-    fn default() -> Self {
-        Self::Off
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct Logging {
     #[serde(default = "default_false")]
     pub enabled: bool,
@@ -97,36 +93,6 @@ impl Default for SearchFilterConfig {
             enabled: false,
             unit: String::new(),
             value: 1,
-        }
-    }
-}
-
-impl Default for Executables {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            mpv: None,
-            ytdlp: None,
-            ffmpeg: None,
-            js_runtime: None,
-        }
-    }
-}
-
-impl Default for Cookies {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            source: CookieSource::default(),
-        }
-    }
-}
-
-impl Default for Logging {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            path: None,
         }
     }
 }
@@ -213,10 +179,10 @@ impl Config {
         let path = Self::get_config_path();
 
         // Ensure parent directory exists check
-        if !path.exists() {
-            if let Some(parent) = path.parent() {
-                let _ = fs::create_dir_all(parent);
-            }
+        if !path.exists()
+            && let Some(parent) = path.parent()
+        {
+            let _ = fs::create_dir_all(parent);
         }
 
         if path.exists() {
@@ -239,13 +205,13 @@ impl Config {
 
     pub fn expand_tilde(path: &Path) -> PathBuf {
         let path_str = path.to_string_lossy();
-        if path_str.starts_with("~/") || path_str == "~" {
-            if let Some(home) = directories::UserDirs::new().map(|u| u.home_dir().to_path_buf()) {
-                if path_str == "~" {
-                    return home;
-                }
-                return home.join(&path_str[2..]);
+        if (path_str.starts_with("~/") || path_str == "~")
+            && let Some(home) = directories::UserDirs::new().map(|u| u.home_dir().to_path_buf())
+        {
+            if path_str == "~" {
+                return home;
             }
+            return home.join(&path_str[2..]);
         }
         path.to_path_buf()
     }
@@ -291,30 +257,29 @@ impl Config {
         info!("Saving config to {:?}", path);
 
         // If file exists, try to preserve user comments/formatting
-        if path.exists() {
-            if let Ok(current_content) = fs::read_to_string(&path) {
-                if let Ok(new_content) = self.update_content_preservative(&current_content) {
-                    fs::write(&path, new_content)?;
-                    info!("Configuration saved successfully (preservative)");
-                    info!(
-                        "cookies: {}",
-                        if self.cookies.enabled {
-                            "enabled"
-                        } else {
-                            "disabled"
-                        }
-                    );
-                    info!(
-                        "logging: {}",
-                        if self.logging.enabled {
-                            "enabled"
-                        } else {
-                            "disabled"
-                        }
-                    );
-                    return Ok(());
+        if path.exists()
+            && let Ok(current_content) = fs::read_to_string(&path)
+            && let Ok(new_content) = self.update_content_preservative(&current_content)
+        {
+            fs::write(&path, new_content)?;
+            info!("Configuration saved successfully (preservative)");
+            info!(
+                "cookies: {}",
+                if self.cookies.enabled {
+                    "enabled"
+                } else {
+                    "disabled"
                 }
-            }
+            );
+            info!(
+                "logging: {}",
+                if self.logging.enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            );
+            return Ok(());
         }
 
         // Fallback to full overwrite if file doesn't exist or update failed
@@ -364,11 +329,11 @@ impl Config {
             if trimmed.starts_with('#') || trimmed.is_empty() {
                 if !trimmed.is_empty() && current_section == "executables" {
                     let after_hash = trimmed.trim_start_matches('#').trim_start();
-                    if let Some((key, val)) = after_hash.split_once('=') {
-                        if key.trim() == "deno" {
-                            new_lines.push(format!("# js_runtime ={}", val));
-                            continue;
-                        }
+                    if let Some((key, val)) = after_hash.split_once('=')
+                        && key.trim() == "deno"
+                    {
+                        new_lines.push(format!("# js_runtime ={}", val));
+                        continue;
                     }
                 }
                 new_lines.push(line.to_string());
@@ -446,12 +411,11 @@ impl Config {
                 } else if current_section == "executables" {
                     if key == "enabled" {
                         new_line = format!("enabled = {}", self.executables.enabled);
-                    } else if key == "js_runtime" || key == "deno" {
-                        if let Some(p) = &self.executables.js_runtime {
-                            if let Ok(val) = serde_json::to_string(&p.to_string_lossy()) {
-                                new_line = format!("js_runtime = {}", val);
-                            }
-                        }
+                    } else if (key == "js_runtime" || key == "deno")
+                        && let Some(p) = &self.executables.js_runtime
+                        && let Ok(val) = serde_json::to_string(&p.to_string_lossy())
+                    {
+                        new_line = format!("js_runtime = {}", val);
                     }
                 } else if current_section == "cookies" {
                     if key == "enabled" {
@@ -460,12 +424,11 @@ impl Config {
                 } else if current_section == "logging" {
                     if key == "enabled" {
                         new_line = format!("enabled = {}", self.logging.enabled);
-                    } else if key == "path" {
-                        if let Some(p) = &self.logging.path {
-                            if let Ok(val) = serde_json::to_string(&p.to_string_lossy()) {
-                                new_line = format!("path = {}", val);
-                            }
-                        }
+                    } else if key == "path"
+                        && let Some(p) = &self.logging.path
+                        && let Ok(val) = serde_json::to_string(&p.to_string_lossy())
+                    {
+                        new_line = format!("path = {}", val);
                     }
                 }
             }
@@ -706,7 +669,7 @@ impl Config {
         } else {
             content.push_str("# js_runtime = \"/usr/bin/deno\"\n");
         }
-        content.push_str("\n");
+        content.push('\n');
 
         content.push_str("[cookies]\n");
         content.push_str("# This section configures how yt-dlp accesses cookies for protected content (like Watch Later).\n");
@@ -756,7 +719,7 @@ impl Config {
                 ));
             }
         }
-        content.push_str("\n");
+        content.push('\n');
 
         content.push_str("[logging]\n");
         content.push_str("# Whether to enable application logging.\n");

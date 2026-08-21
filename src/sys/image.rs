@@ -36,14 +36,12 @@ pub async fn download_image(url: &str, video_id: &str) -> Result<DynamicImage> {
 
     // Try each URL
     for target_url in urls_to_try {
-        if let Ok(resp) = client.get(&target_url).send().await {
-            if resp.status().is_success() {
-                if let Ok(bytes) = resp.bytes().await {
-                    if let Ok(img) = image::load_from_memory(&bytes) {
-                        return Ok(img);
-                    }
-                }
-            }
+        if let Ok(resp) = client.get(&target_url).send().await
+            && resp.status().is_success()
+            && let Ok(bytes) = resp.bytes().await
+            && let Ok(img) = image::load_from_memory(&bytes)
+        {
+            return Ok(img);
         }
     }
 

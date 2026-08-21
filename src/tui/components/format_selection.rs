@@ -54,7 +54,11 @@ pub fn render_format_selection(f: &mut ratatui::Frame, app: &mut App, area: Rect
                     fmt.note.clone()
                 }
             } else {
-                let height = fmt.resolution.split('x').last().unwrap_or(&fmt.resolution);
+                let height = fmt
+                    .resolution
+                    .split('x')
+                    .next_back()
+                    .unwrap_or(&fmt.resolution);
                 if !height.is_empty() && height.chars().all(|c| c.is_ascii_digit()) {
                     format!("{}p", height)
                 } else if !height.is_empty() {

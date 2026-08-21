@@ -219,10 +219,11 @@ pub async fn search_videos_flat(
                 .unwrap_or("")
                 .to_string();
 
-            if final_url.is_empty() && !id.is_empty() {
-                if let Some(original_url) = val["original_url"].as_str() {
-                    final_url = original_url.to_string();
-                }
+            if final_url.is_empty()
+                && !id.is_empty()
+                && let Some(original_url) = val["original_url"].as_str()
+            {
+                final_url = original_url.to_string();
             }
 
             if final_url.is_empty() {
@@ -628,10 +629,10 @@ pub async fn get_video_formats(url: &str, settings: &Settings) -> Result<Vec<Vid
                 .or_else(|| f["filesize"].as_f64().map(|v| v as u64))
                 .or_else(|| f["filesize_approx"].as_f64().map(|v| v as u64));
 
-            if filesize.is_none() {
-                if let (Some(tbr), Some(dur)) = (f["tbr"].as_f64(), duration) {
-                    filesize = Some(((tbr * 1000.0 / 8.0) * dur) as u64);
-                }
+            if filesize.is_none()
+                && let (Some(tbr), Some(dur)) = (f["tbr"].as_f64(), duration)
+            {
+                filesize = Some(((tbr * 1000.0 / 8.0) * dur) as u64);
             }
 
             formats.push(VideoFormat {
@@ -658,7 +659,7 @@ pub async fn get_video_formats(url: &str, settings: &Settings) -> Result<Vec<Vid
         } else if !a_is_audio && !b_is_audio {
             let get_height = |res: &str| {
                 res.split('x')
-                    .last()
+                    .next_back()
                     .and_then(|s| s.parse::<u32>().ok())
                     .unwrap_or(0)
             };

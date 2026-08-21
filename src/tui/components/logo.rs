@@ -116,7 +116,7 @@ impl Widget for Logo {
                         color_shift = self.frame_index / 2;
                     }
                     AnimationMode::Glitch => {
-                        if (self.frame_index + row_idx) % 15 == 0 {
+                        if (self.frame_index + row_idx).is_multiple_of(15) {
                             x_offset = (self.frame_index % 3) as i16 - 1;
                         }
                     }

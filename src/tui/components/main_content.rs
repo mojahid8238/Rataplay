@@ -509,10 +509,10 @@ pub fn format_upload_date(raw: Option<&str>) -> String {
             let months = [
                 "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
             ];
-            if let Ok(m_idx) = m.parse::<usize>() {
-                if m_idx >= 1 && m_idx <= 12 {
-                    return format!("{} {}, {}", months[m_idx - 1], d, y);
-                }
+            if let Ok(m_idx) = m.parse::<usize>()
+                && (1..=12).contains(&m_idx)
+            {
+                return format!("{} {}, {}", months[m_idx - 1], d, y);
             }
             return format!("{}-{}-{}", y, m, d);
         }

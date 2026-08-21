@@ -113,10 +113,10 @@ pub fn on_tick(app: &mut App) {
                 match item {
                     yt::SearchResult::Video(video) => {
                         // Trigger image download if thumbnail exists, even if partial
-                        if let Some(url) = &video.thumbnail_url {
-                            if !app.image_cache.contains_key(&video.id) {
-                                let _ = app.image_tx.send((video.id.clone(), url.clone()));
-                            }
+                        if let Some(url) = &video.thumbnail_url
+                            && !app.image_cache.contains_key(&video.id)
+                        {
+                            let _ = app.image_tx.send((video.id.clone(), url.clone()));
                         }
 
                         if video.is_partial && video.video_type == crate::model::VideoType::Video {
@@ -146,7 +146,7 @@ pub fn on_tick(app: &mut App) {
                             // Flush pending resolutions
                             if !app.pending_resolution_ids.is_empty() {
                                 let items: Vec<String> =
-                                    app.pending_resolution_ids.drain(..).collect();
+                                    std::mem::take(&mut app.pending_resolution_ids);
                                 let n = items.len();
                                 if app.details_tx.send(items).is_err() {
                                     app.status_message =
@@ -171,7 +171,7 @@ pub fn on_tick(app: &mut App) {
 
     // Flush pending resolutions periodically (e.g. if we have >= 5 items)
     if app.pending_resolution_ids.len() >= 5 {
-        let items: Vec<String> = app.pending_resolution_ids.drain(..).collect();
+        let items: Vec<String> = std::mem::take(&mut app.pending_resolution_ids);
         let n = items.len();
         if app.details_tx.send(items).is_err() {
             app.status_message = Some("Details: background task unavailable.".to_string());
@@ -182,21 +182,18 @@ pub fn on_tick(app: &mut App) {
 
     // Resolve details for the currently selected item if it's partial
     // We prioritize search results and thumbnails over these details
-    if !app.is_searching {
-        if let Some(idx) = app.selected_result_index {
-            if let Some(video) = app.search_results.get(idx) {
-                if video.is_partial && video.video_type == crate::model::VideoType::Video {
-                    if !app.pending_resolution_ids.contains(&video.url) {
-                        app.pending_resolution_ids.push(video.url.clone());
-                        if app.details_tx.send(vec![video.url.clone()]).is_err() {
-                            app.status_message =
-                                Some("Details: background task unavailable.".to_string());
-                        } else {
-                            app.status_message = Some("Resolving video details...".to_string());
-                        }
-                    }
-                }
-            }
+    if !app.is_searching
+        && let Some(idx) = app.selected_result_index
+        && let Some(video) = app.search_results.get(idx)
+        && video.is_partial
+        && video.video_type == crate::model::VideoType::Video
+        && !app.pending_resolution_ids.contains(&video.url)
+    {
+        app.pending_resolution_ids.push(video.url.clone());
+        if app.details_tx.send(vec![video.url.clone()]).is_err() {
+            app.status_message = Some("Details: background task unavailable.".to_string());
+        } else {
+            app.status_message = Some("Resolving video details...".to_string());
         }
     }
 
@@ -273,10 +270,10 @@ pub fn on_tick(app: &mut App) {
             }
             DownloadEvent::Error(id, error) => {
                 log::error!("Download error for video {}: {}", id, error);
-                if let Some(task) = app.download_manager.tasks.get_mut(&id) {
-                    if task.status != crate::model::download::DownloadStatus::Canceled {
-                        task.status = crate::model::download::DownloadStatus::Error(error);
-                    }
+                if let Some(task) = app.download_manager.tasks.get_mut(&id)
+                    && task.status != crate::model::download::DownloadStatus::Canceled
+                {
+                    task.status = crate::model::download::DownloadStatus::Error(error);
                 }
             }
             DownloadEvent::Started(id, pid) => {
@@ -344,34 +341,34 @@ pub fn on_tick(app: &mut App) {
     }
 
     // Check if playback process finished
-    if let Some(ref mut child) = app.playback_process {
-        if let Ok(Some(_)) = child.try_wait() {
-            app.playback_process = None;
-            app.playback_cmd_tx = None;
-            app.playback_title = None;
-            app.playback_time = 0.0;
-            app.playback_total = 0.0;
-            app.playback_duration_str = None;
-            app.is_paused = false;
-            app.is_finishing = false;
-            app.terminal_loading = false;
-            app.terminal_loading_error = None;
-            app.terminal_ready_url = None;
-            app.status_message = Some("Stopped.".to_string());
-            app.playing_source = None;
-            app.destroy_media();
-        }
+    if let Some(ref mut child) = app.playback_process
+        && let Ok(Some(_)) = child.try_wait()
+    {
+        app.playback_process = None;
+        app.playback_cmd_tx = None;
+        app.playback_title = None;
+        app.playback_time = 0.0;
+        app.playback_total = 0.0;
+        app.playback_duration_str = None;
+        app.is_paused = false;
+        app.is_finishing = false;
+        app.terminal_loading = false;
+        app.terminal_loading_error = None;
+        app.terminal_ready_url = None;
+        app.status_message = Some("Stopped.".to_string());
+        app.playing_source = None;
+        app.destroy_media();
     }
 
     // Process IPC responses for progress tracking
     while let Ok(msg) = app.playback_res_rx.try_recv() {
-        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&msg) {
-            if let Some(t) = val["data"].as_f64() {
-                if val["request_id"].as_u64() == Some(1) {
-                    app.playback_time = t;
-                } else if val["request_id"].as_u64() == Some(2) {
-                    app.playback_total = t;
-                }
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&msg)
+            && let Some(t) = val["data"].as_f64()
+        {
+            if val["request_id"].as_u64() == Some(1) {
+                app.playback_time = t;
+            } else if val["request_id"].as_u64() == Some(2) {
+                app.playback_total = t;
             }
         }
     }
@@ -438,7 +435,7 @@ pub fn move_selection(app: &mut App, delta: i32) {
     let new_index = if delta > 0 {
         (current + (delta as usize)).min(len - 1)
     } else {
-        current.saturating_sub(delta.abs() as usize)
+        current.saturating_sub(delta.unsigned_abs() as usize)
     };
 
     app.selected_result_index = Some(new_index);
@@ -449,13 +446,11 @@ pub fn move_selection(app: &mut App, delta: i32) {
 }
 
 pub fn request_image_for_selection(app: &mut App) {
-    if let Some(idx) = app.selected_result_index {
-        if let Some(video) = app.search_results.get(idx) {
-            if !app.image_cache.contains_key(&video.id) {
-                if let Some(url) = &video.thumbnail_url {
-                    let _ = app.image_tx.send((video.id.clone(), url.clone()));
-                }
-            }
-        }
+    if let Some(idx) = app.selected_result_index
+        && let Some(video) = app.search_results.get(idx)
+        && !app.image_cache.contains_key(&video.id)
+        && let Some(url) = &video.thumbnail_url
+    {
+        let _ = app.image_tx.send((video.id.clone(), url.clone()));
     }
 }

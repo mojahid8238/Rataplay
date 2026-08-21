@@ -215,13 +215,12 @@ async fn main() -> Result<()> {
         let mut interval = tokio::time::interval(Duration::from_millis(500));
         loop {
             interval.tick().await;
-            if let Ok(metadata) = std::fs::metadata(&path) {
-                if let Ok(mtime) = metadata.modified() {
-                    if last_mtime != Some(mtime) {
-                        last_mtime = Some(mtime);
-                        let _ = config_tx.send(());
-                    }
-                }
+            if let Ok(metadata) = std::fs::metadata(&path)
+                && let Ok(mtime) = metadata.modified()
+                && last_mtime != Some(mtime)
+            {
+                last_mtime = Some(mtime);
+                let _ = config_tx.send(());
             }
         }
     });
@@ -371,7 +370,7 @@ async fn main() -> Result<()> {
                     }
                     AppAction::WatchInTerminal => {
                         let clean_url = if full_url.contains("::") {
-                            full_url.splitn(2, "::").next().unwrap_or(&full_url).to_string()
+                            full_url.split("::").next().unwrap_or(&full_url).to_string()
                         } else {
                             full_url.to_string()
                         };

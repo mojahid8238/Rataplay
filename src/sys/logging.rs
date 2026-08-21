@@ -14,23 +14,21 @@ struct DynamicWriter;
 
 impl Write for DynamicWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        if let Some(lock) = LOG_FILE.get() {
-            if let Ok(mut file_opt) = lock.write() {
-                if let Some(file) = file_opt.as_mut() {
-                    return file.write(buf);
-                }
-            }
+        if let Some(lock) = LOG_FILE.get()
+            && let Ok(mut file_opt) = lock.write()
+            && let Some(file) = file_opt.as_mut()
+        {
+            return file.write(buf);
         }
         Ok(buf.len())
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        if let Some(lock) = LOG_FILE.get() {
-            if let Ok(mut file_opt) = lock.write() {
-                if let Some(file) = file_opt.as_mut() {
-                    return file.flush();
-                }
-            }
+        if let Some(lock) = LOG_FILE.get()
+            && let Ok(mut file_opt) = lock.write()
+            && let Some(file) = file_opt.as_mut()
+        {
+            return file.flush();
         }
         Ok(())
     }
