@@ -191,10 +191,10 @@ async fn main() -> Result<()> {
 
     // Initialize Image Picker with specialized detection for Kitty/WezTerm
     let mut picker = Picker::from_query_stdio().unwrap_or_else(|_| Picker::halfblocks());
-    // Explicitly check for Kitty/WezTerm to enable advanced graphics protocol
+    // Explicitly check for Kitty/WezTerm/Ghostty to enable advanced graphics protocol
     let term = std::env::var("TERM").unwrap_or_default();
     let term_program = std::env::var("TERM_PROGRAM").unwrap_or_default();
-    if term == "xterm-kitty" || term_program == "WezTerm" {
+    if term == "xterm-kitty" || term_program == "WezTerm" || term_program == "ghostty" {
         // Force Kitty protocol if detected to avoid pixelation
         picker.set_protocol_type(ratatui_image::picker::ProtocolType::Kitty);
     }
