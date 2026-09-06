@@ -55,3 +55,65 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            os: macos-13
+          - arch: arm64
+            os: macos-14
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build Binary
+        run: cargo build --release --locked
+
+      - name: Upload Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rataplay-macos-${{ matrix.arch }}
+          path: target/release/rataplay
+          if-no-files-found: error
+
+  lipo-merge:
+    needs: build-macos
+    runs-on: macos-14
+    steps:
+      - name: Download x86_64 Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: rataplay-macos-x86_64
+          path: x64
+
+      - name: Download arm64 Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: rataplay-macos-arm64
+          path: arm
+
+      - name: Create Universal Binary
+        run: |
+          mkdir -p artifacts
+          lipo -create \
+            x64/target/release/rataplay \
+            arm/target/release/rataplay \
+            -output artifacts/rataplay-macos-universal
+          lipo -info artifacts/rataplay-macos-universal
+
+      - name: Attach to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
