@@ -163,15 +163,14 @@ fn render_date_filter_popup(f: &mut Frame, app: &App) {
             } else {
                 Style::default().fg(app.theme.fg)
             };
-            let prefix = if i == app.date_filter_selection_index {
-                "● "
-            } else {
-                "  "
-            };
-            ListItem::new(Line::from(vec![Span::styled(
-                format!("{}{}", prefix, name),
-                style,
-            )]))
+            ListItem::new(Line::from(vec![
+                if i == app.date_filter_selection_index {
+                    app.theme.selected_symbol()
+                } else {
+                    Span::raw("  ")
+                },
+                Span::styled(*name, style),
+            ]))
         })
         .collect();
 

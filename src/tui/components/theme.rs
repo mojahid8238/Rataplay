@@ -21,6 +21,10 @@ impl Theme {
     pub fn selected_symbol(&self) -> Span<'static> {
         Span::styled("● ", Style::default().fg(self.highlight))
     }
+
+    pub fn inactive_symbol(&self) -> Span<'static> {
+        Span::styled("● ", Style::default().fg(Color::DarkGray))
+    }
 }
 
 pub const DEFAULT_THEME: Theme = Theme {

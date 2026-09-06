@@ -1,7 +1,7 @@
 use ratatui::{
     prelude::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
-    text::Span,
+    text::{Line, Span},
     widgets::{Block, BorderType, Borders, Cell, Row, Table},
 };
 
@@ -55,7 +55,6 @@ fn render_active_downloads(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
         .map(|(i, task)| {
             let is_focused =
                 app.state == AppState::Downloads && app.selected_download_index == Some(i);
-            let indicator = if is_focused { "● " } else { "  " };
             let checkbox = if app.selected_download_indices.contains(&i) {
                 "[x] "
             } else {
@@ -91,7 +90,15 @@ fn render_active_downloads(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
             let display_title = truncate_str(&task.title, title_avail.saturating_sub(6));
 
             Row::new(vec![
-                Cell::from(format!("{}{}{}", indicator, checkbox, display_title)),
+                Cell::from(Line::from(vec![
+                    if is_focused {
+                        app.theme.selected_symbol()
+                    } else {
+                        Span::raw("  ")
+                    },
+                    Span::raw(checkbox),
+                    Span::raw(display_title),
+                ])),
                 Cell::from(task.total_size.clone()),
                 Cell::from(create_progress_bar_string(
                     task.progress,
@@ -158,7 +165,6 @@ fn render_local_files(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
                 app.state == AppState::Downloads && app.selected_local_file_index == Some(i);
             let is_selected = app.selected_local_file_indices.contains(&i);
 
-            let indicator = if is_focused { "● " } else { "  " };
             let checkbox = if is_selected { "[x] " } else { "[ ] " };
 
             let status_span = if file.is_garbage {
@@ -177,7 +183,15 @@ fn render_local_files(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
             let display_name = truncate_str(&file.name, name_avail.saturating_sub(6));
 
             Row::new(vec![
-                Cell::from(format!("{}{}{}", indicator, checkbox, display_name)),
+                Cell::from(Line::from(vec![
+                    if is_focused {
+                        app.theme.selected_symbol()
+                    } else {
+                        Span::raw("  ")
+                    },
+                    Span::raw(checkbox),
+                    Span::raw(display_name),
+                ])),
                 Cell::from(file.size.clone()),
                 Cell::from(file.extension.clone()),
                 Cell::from(status_span),

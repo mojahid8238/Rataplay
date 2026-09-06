@@ -168,7 +168,7 @@ pub fn render_main_area(f: &mut ratatui::Frame, app: &mut App, area: Rect, picke
         .highlight_symbol(if app.state == AppState::Results {
             app.theme.selected_symbol()
         } else {
-            Span::styled("● ", Style::default().fg(Color::DarkGray))
+            app.theme.inactive_symbol()
         });
 
     app.main_list_state.select(app.selected_result_index);
