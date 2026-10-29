@@ -87,7 +87,15 @@ fn render_active_downloads(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
             };
 
             let title_avail = (area.width as f64 * 0.3).round() as usize;
-            let display_title = truncate_str(&task.title, title_avail.saturating_sub(6));
+            let suffix = task
+                .format_label()
+                .map(|label| format!(" [-> {}]", label))
+                .unwrap_or_default();
+            let display_title = format!(
+                "{}{}",
+                truncate_str(&task.title, title_avail.saturating_sub(6 + suffix.len())),
+                suffix
+            );
 
             Row::new(vec![
                 Cell::from(Line::from(vec![

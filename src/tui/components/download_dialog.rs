@@ -11,9 +11,14 @@ use crate::app::state::DownloadDialogMode;
 
 pub fn render_download_dialog(f: &mut ratatui::Frame, app: &mut App, area: Rect) {
     let items = match app.download_dialog_mode {
-        DownloadDialogMode::Single => vec!["Video (Best)", "Audio (Best)", "Select Format..."],
+        DownloadDialogMode::Single => vec![
+            "Video (Best)",
+            "Audio (Best)",
+            "Convert to...",
+            "Select Format...",
+        ],
         DownloadDialogMode::BulkSelected | DownloadDialogMode::BulkAll => {
-            vec!["Video (Best)", "Audio (Best)"]
+            vec!["Video (Best)", "Audio (Best)", "Convert to..."]
         }
     };
 

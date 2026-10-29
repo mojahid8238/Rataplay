@@ -1,4 +1,5 @@
 pub mod action_menu;
+pub mod convert_dialog;
 pub mod download_dialog;
 pub mod downloads;
 pub mod format_selection;

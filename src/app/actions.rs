@@ -50,11 +50,32 @@ pub fn get_available_actions(app: &App) -> Vec<Action> {
                     "Play (Audio)",
                     AppAction::PlayLocalAudio,
                 ));
+                actions.push(Action::new(
+                    KeyCode::Char('v'),
+                    if app.selected_local_file_indices.is_empty() {
+                        "Convert to..."
+                    } else {
+                        "Convert Selected to..."
+                    },
+                    AppAction::ConvertLocalFiles,
+                ));
             }
             actions.push(Action::new(
                 KeyCode::Char('x'),
                 "Delete File",
                 AppAction::DeleteLocalFile,
+            ));
+        }
+
+        if !app.selected_local_file_indices.is_empty()
+            && !actions
+                .iter()
+                .any(|a| a.action == AppAction::ConvertLocalFiles)
+        {
+            actions.push(Action::new(
+                KeyCode::Char('v'),
+                "Convert Selected to...",
+                AppAction::ConvertLocalFiles,
             ));
         }
         // Actions for Active Downloads

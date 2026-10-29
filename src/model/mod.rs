@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+pub mod convert;
 pub mod download;
 pub mod local;
 pub mod settings;

@@ -1,6 +1,7 @@
 use crate::app::actions;
-use crate::app::state::DownloadDialogMode;
+use crate::app::state::{ConvertContext, DownloadDialogMode};
 use crate::app::{App, AppAction, AppState, DownloadControl, InputMode};
+use crate::model::convert::ConvertTarget;
 use crate::sys::local;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -242,6 +243,35 @@ pub fn handle_action_menu_key(app: &mut App, code: KeyCode) {
                 actions::refresh_local_files(app);
                 app.status_message = Some(format!("Deleted {} files.", indices.len()));
                 app.state = app.previous_app_state;
+            }
+            AppAction::ConvertLocalFiles => {
+                let paths: Vec<std::path::PathBuf> = if !app.selected_local_file_indices.is_empty()
+                {
+                    app.selected_local_file_indices
+                        .iter()
+                        .filter_map(|&idx| app.local_files.get(idx))
+                        .filter(|file| !file.is_garbage)
+                        .map(|file| file.path.clone())
+                        .collect()
+                } else if let Some(idx) = app.selected_local_file_index {
+                    app.local_files
+                        .get(idx)
+                        .filter(|file| !file.is_garbage)
+                        .map(|file| vec![file.path.clone()])
+                        .unwrap_or_default()
+                } else {
+                    Vec::new()
+                };
+
+                if paths.is_empty() {
+                    app.status_message = Some("No file selected.".to_string());
+                    app.state = app.previous_app_state;
+                } else {
+                    app.convert_context = Some(ConvertContext::LocalFiles(paths));
+                    app.convert_dialog_index = 0;
+                    app.convert_return_state = AppState::Downloads;
+                    app.state = AppState::ConvertDialog;
+                }
             }
             AppAction::ResumeDownload => {
                 if let Some(idx) = app.selected_download_index
@@ -548,4 +578,100 @@ pub fn handle_action_menu_key(app: &mut App, code: KeyCode) {
             }
         }
     }
+}
+
+pub fn handle_convert_dialog_key(app: &mut App, code: KeyCode) {
+    let item_count = ConvertTarget::ALL.len();
+
+    match code {
+        KeyCode::Esc | KeyCode::Char('q') => {
+            app.convert_context = None;
+            app.state = app.convert_return_state;
+        }
+        KeyCode::Up | KeyCode::Char('k') => {
+            if app.convert_dialog_index > 0 {
+                app.convert_dialog_index -= 1;
+            }
+        }
+        KeyCode::Down | KeyCode::Char('j') => {
+            if app.convert_dialog_index < item_count.saturating_sub(1) {
+                app.convert_dialog_index += 1;
+            }
+        }
+        KeyCode::Enter => start_conversion(app),
+        _ => {}
+    }
+}
+
+pub fn handle_convert_dialog_mouse(app: &mut App, x: u16, y: u16, double_click: bool) {
+    if let Some(area) = app.convert_dialog_area {
+        if super::is_in_rect(x, y, area) {
+            let list_start_y = area.y + 1;
+            if y >= list_start_y {
+                let idx = (y - list_start_y) as usize;
+                if idx < ConvertTarget::ALL.len() {
+                    app.convert_dialog_index = idx;
+                    if double_click {
+                        super::handle_key_event(
+                            app,
+                            KeyEvent::new(KeyCode::Enter, KeyModifiers::empty()),
+                        );
+                    }
+                }
+            }
+        } else {
+            app.convert_context = None;
+            app.state = app.convert_return_state;
+        }
+    }
+}
+
+pub fn handle_convert_dialog_scroll(app: &mut App, dir: i32) {
+    let item_count = ConvertTarget::ALL.len();
+    if dir < 0 && app.convert_dialog_index > 0 {
+        app.convert_dialog_index -= 1;
+    } else if dir > 0 && app.convert_dialog_index < item_count.saturating_sub(1) {
+        app.convert_dialog_index += 1;
+    }
+}
+
+fn start_conversion(app: &mut App) {
+    let Some(context) = app.convert_context.clone() else {
+        app.status_message = Some("Nothing to convert.".to_string());
+        app.state = app.convert_return_state;
+        return;
+    };
+
+    let target = ConvertTarget::ALL[app.convert_dialog_index.min(ConvertTarget::ALL.len() - 1)];
+
+    match context {
+        ConvertContext::Downloads(videos) => {
+            let format_id = target.format_id();
+            for video in videos {
+                app.download_manager.add_task(&video, &format_id);
+                let _ = app.new_download_tx.send((video, format_id.clone()));
+            }
+            app.status_message = Some(format!(
+                "Download started (converting to {})...",
+                target.label()
+            ));
+            app.action_video = None;
+            app.state = app.previous_app_state;
+        }
+        ConvertContext::LocalFiles(files) => {
+            let count = files.len();
+            if app.convert_tx.send((files, target)).is_err() {
+                app.status_message = Some("Conversion worker unavailable.".to_string());
+            } else {
+                app.status_message = Some(format!(
+                    "Converting {} file(s) to {}...",
+                    count,
+                    target.label()
+                ));
+            }
+            app.state = AppState::Downloads;
+        }
+    }
+
+    app.convert_context = None;
 }

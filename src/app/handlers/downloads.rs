@@ -1,7 +1,40 @@
 use crate::app::actions;
-use crate::app::state::DownloadDialogMode;
+use crate::app::state::{ConvertContext, DownloadDialogMode};
 use crate::app::{App, AppAction, AppState, DownloadControl, InputMode};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+pub fn download_dialog_item_count(app: &App) -> usize {
+    match app.download_dialog_mode {
+        DownloadDialogMode::Single => 4,
+        DownloadDialogMode::BulkSelected | DownloadDialogMode::BulkAll => 3,
+    }
+}
+
+fn download_dialog_videos(app: &App) -> Vec<crate::model::Video> {
+    match app.download_dialog_mode {
+        DownloadDialogMode::Single => app.action_video.clone().into_iter().collect(),
+        DownloadDialogMode::BulkSelected => app
+            .selected_playlist_indices
+            .iter()
+            .filter_map(|&idx| app.search_results.get(idx).cloned())
+            .collect(),
+        DownloadDialogMode::BulkAll => app.search_results.to_vec(),
+    }
+}
+
+fn open_convert_dialog(app: &mut App) {
+    let videos = download_dialog_videos(app);
+
+    if videos.is_empty() {
+        app.status_message = Some("No videos selected.".to_string());
+        return;
+    }
+
+    app.convert_context = Some(ConvertContext::Downloads(videos));
+    app.convert_dialog_index = 0;
+    app.convert_return_state = AppState::DownloadDialog;
+    app.state = AppState::ConvertDialog;
+}
 
 pub fn handle_scroll(app: &mut App, dir: i32) {
     if dir < 0 {
@@ -199,10 +232,7 @@ pub fn handle_key(app: &mut App, code: KeyCode) {
 }
 
 pub fn handle_download_dialog_key(app: &mut App, code: KeyCode) {
-    let item_count: usize = match app.download_dialog_mode {
-        DownloadDialogMode::Single => 3,
-        DownloadDialogMode::BulkSelected | DownloadDialogMode::BulkAll => 2,
-    };
+    let item_count = download_dialog_item_count(app);
 
     match code {
         KeyCode::Esc | KeyCode::Char('q') => {
@@ -219,62 +249,52 @@ pub fn handle_download_dialog_key(app: &mut App, code: KeyCode) {
             }
         }
         KeyCode::Enter => {
+            if app.download_dialog_index == 2 {
+                open_convert_dialog(app);
+                return;
+            }
+
+            if app.download_dialog_mode == DownloadDialogMode::Single
+                && app.download_dialog_index == 3
+            {
+                // "Select Format..." — proceed with format selection
+                if let Some(video) = app.action_video.clone() {
+                    let url = video.url;
+                    let _ = app.format_tx.send(url);
+                    app.input_mode = InputMode::Loading;
+                    app.status_message = Some("Fetching formats...".to_string());
+                    app.format_selection_mode = crate::app::state::FormatSelectionMode::Download;
+                } else {
+                    app.status_message = Some("No video selected.".to_string());
+                }
+                return;
+            }
+
             let format_id = match app.download_dialog_index {
-                0 => "best",       // Video
-                1 => "audio_best", // Audio
-                _ => "",
+                0 => "best",
+                1 => "audio_best",
+                _ => return,
             };
 
-            match app.download_dialog_mode {
-                DownloadDialogMode::Single => {
-                    if app.download_dialog_index == 2 {
-                        // "Select Format..." — proceed with format selection
-                        if let Some(video) = app.action_video.clone() {
-                            let url = video.url;
-                            let _ = app.format_tx.send(url);
-                            app.input_mode = InputMode::Loading;
-                            app.status_message = Some("Fetching formats...".to_string());
-                            app.format_selection_mode =
-                                crate::app::state::FormatSelectionMode::Download;
-                        }
-                    } else if let Some(video) = app.action_video.clone() {
-                        app.download_manager.add_task(&video, format_id);
-                        let _ = app
-                            .new_download_tx
-                            .send((video.clone(), format_id.to_string()));
-                        app.status_message = Some("Download started...".to_string());
-                        app.action_video = None;
-                        app.state = app.previous_app_state;
-                    }
-                }
-                DownloadDialogMode::BulkSelected => {
-                    let selected_videos: Vec<crate::model::Video> = app
-                        .selected_playlist_indices
-                        .iter()
-                        .filter_map(|&idx| app.search_results.get(idx).cloned())
-                        .collect();
-
-                    if selected_videos.is_empty() {
-                        app.status_message = Some("No videos selected.".to_string());
-                    } else {
-                        for video in selected_videos {
-                            app.download_manager.add_task(&video, format_id);
-                            let _ = app.new_download_tx.send((video, format_id.to_string()));
-                        }
-                        app.status_message = Some("Starting downloads...".to_string());
-                    }
-                    app.state = app.previous_app_state;
-                }
-                DownloadDialogMode::BulkAll => {
-                    let videos: Vec<crate::model::Video> = app.search_results.to_vec();
-                    for video in videos {
-                        app.download_manager.add_task(&video, format_id);
-                        let _ = app.new_download_tx.send((video, format_id.to_string()));
-                    }
-                    app.status_message = Some("Starting downloads...".to_string());
-                    app.state = app.previous_app_state;
-                }
+            let videos = download_dialog_videos(app);
+            if videos.is_empty() {
+                app.status_message = Some("No videos selected.".to_string());
+                return;
             }
+
+            let is_single = videos.len() == 1;
+            for video in videos {
+                app.download_manager.add_task(&video, format_id);
+                let _ = app.new_download_tx.send((video, format_id.to_string()));
+            }
+
+            app.status_message = Some(if is_single {
+                "Download started...".to_string()
+            } else {
+                "Starting downloads...".to_string()
+            });
+            app.action_video = None;
+            app.state = app.previous_app_state;
         }
         _ => {}
     }
@@ -283,12 +303,8 @@ pub fn handle_download_dialog_key(app: &mut App, code: KeyCode) {
 pub fn handle_download_dialog_mouse(app: &mut App, x: u16, y: u16, double_click: bool) {
     if let Some(area) = app.download_dialog_area {
         if super::is_in_rect(x, y, area) {
-            let item_count = match app.download_dialog_mode {
-                DownloadDialogMode::Single => 3,
-                DownloadDialogMode::BulkSelected | DownloadDialogMode::BulkAll => 2,
-            };
-            let header_height = 2;
-            let list_start_y = area.y + 1 + header_height;
+            let item_count = download_dialog_item_count(app);
+            let list_start_y = area.y + 1;
             if y >= list_start_y {
                 let relative_y = y - list_start_y;
                 if (relative_y as usize) < item_count {

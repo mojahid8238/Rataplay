@@ -29,6 +29,10 @@ pub fn handle_mouse_event(app: &mut App, mouse: MouseEvent) {
                     downloads::handle_download_dialog_mouse(app, x, y, double_click);
                     return;
                 }
+                AppState::ConvertDialog => {
+                    overlays::handle_convert_dialog_mouse(app, x, y, double_click);
+                    return;
+                }
                 AppState::Settings => {
                     settings::handle_settings_mouse(app, x, y, double_click);
                     return;
@@ -147,6 +151,7 @@ fn handle_scroll(app: &mut App, dir: i32) {
         AppState::Results => results::handle_scroll(app, dir),
         AppState::Downloads => downloads::handle_scroll(app, dir),
         AppState::FormatSelection => overlays::handle_format_selection_scroll(app, dir),
+        AppState::ConvertDialog => overlays::handle_convert_dialog_scroll(app, dir),
         _ => {}
     }
 }
@@ -223,6 +228,7 @@ pub fn handle_key_event(app: &mut App, key: KeyEvent) {
                 AppState::FormatSelection => overlays::handle_format_selection_key(app, code),
                 AppState::Downloads => downloads::handle_key(app, code),
                 AppState::DownloadDialog => downloads::handle_download_dialog_key(app, code),
+                AppState::ConvertDialog => overlays::handle_convert_dialog_key(app, code),
                 AppState::ActionMenu => overlays::handle_action_menu_key(app, code),
                 _ => results::handle_key(app, code),
             }

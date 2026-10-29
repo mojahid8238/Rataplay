@@ -304,6 +304,37 @@ pub fn on_tick(app: &mut App) {
         }
     }
 
+    // Check for local conversion results
+    while let Ok(result) = app.convert_event_rx.try_recv() {
+        actions::refresh_local_files(app);
+
+        let converted = result.converted.len();
+        let failed = result.failures.len();
+
+        app.status_message = Some(if converted == 0 && failed > 0 {
+            let reason = result
+                .failures
+                .first()
+                .map(|(_, e)| e.as_str())
+                .unwrap_or("unknown error");
+            format!("Conversion failed: {}", reason)
+        } else if failed > 0 {
+            let reason = result
+                .failures
+                .first()
+                .map(|(_, e)| e.as_str())
+                .unwrap_or("unknown error");
+            format!(
+                "Converted {} file(s); {} failed ({})",
+                converted, failed, reason
+            )
+        } else if converted == 1 {
+            "Converted 1 file.".to_string()
+        } else {
+            format!("Converted {} files.", converted)
+        });
+    }
+
     // Check for media events
     while let Ok(event) = app.media_rx.try_recv() {
         match event {

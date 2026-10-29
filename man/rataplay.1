@@ -10,9 +10,11 @@ rataplay \- Terminal YouTube Search & Play
 is a high-performance terminal user interface for searching, playing, and
 downloading YouTube videos. It uses
 .B mpv
-for playback and
+for playback,
 .B yt\-dlp
-for metadata extraction, searching, and downloading.
+for metadata extraction, searching, and downloading, and
+.B ffmpeg
+for format conversion and stream merging.
 
 If a
 .I query
@@ -202,6 +204,31 @@ Resume or restart all selected downloads.
 .TP
 .B X (Shift)
 Cancel all selected downloads.
+.TP
+.B v
+Convert the focused local file, or all selected local files, to another
+format (from the action menu).
+.SS Conversion
+The download dialog includes a
+.B Convert to...
+option. It downloads the best available stream and converts it to one of
+MP4, MKV, WEBM, MP3, M4A, OPUS, FLAC, or WAV. The same target list is
+available for bulk downloads and for files already in the Local Files panel.
+Local conversions require
+.B ffmpeg
+and write a new file next to the source without overwriting it.
+.TP
+.B j , Down
+Next target format.
+.TP
+.B k , Up
+Previous target format.
+.TP
+.B Enter
+Start the download/conversion with the selected target.
+.TP
+.B Esc , q
+Go back to the previous dialog.
 .SS Format Selection
 .TP
 .B j , Down

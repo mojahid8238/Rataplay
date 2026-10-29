@@ -15,6 +15,7 @@
   - **In-Terminal**: Specialized "Watch in Terminal" mode using `mpv`'s TCT output.
   - **Audio Only**: High-fidelity audio streams for background listening.
 - 📥 **Background Downloads**: Multi-threaded downloads with real-time speed, progress, and ETA tracking. Re-download in any quality video from downloads panel.
+- 🔄 **Format Conversion**: Download and convert to MP4, MKV, WEBM, MP3, M4A, OPUS, FLAC, or WAV. Existing local files can be converted from the Downloads panel too.
 - 📂 **Local Management**: Browse, play, and manage your downloaded files directly within the app.
 - 🖱️ **Mouse Support**: Navigate search results, manage downloads, and interact with the UI seamlessly using your mouse.
 - 🗓️ **Date Filters**: Narrow down searches by day, week, or month for more relevant results.
@@ -34,6 +35,7 @@ Rataplay relies on the following tools:
 
 1. **[yt-dlp](https://github.com/yt-dlp/yt-dlp)**: For metadata extraction and streaming. (Rataplay checks for updates on startup).
 2. **[mpv](https://mpv.io/)**: For all playback features.
+3. **[ffmpeg](https://ffmpeg.org/)**: Required for format conversion (and for merging separate video/audio streams).
 
 ## 🚀 Installation
 
@@ -93,10 +95,20 @@ paru -S rataplay
 | `j` / `k` | Navigate between Active Tasks and Local Files |
 | `p` | Pause/Resume/Restart Download |
 | `x` | Cancel Download / Delete Local File |
+| `v` | Convert selected local file(s) (from the action menu) |
 | `c` | Cleanup Garbage (.part files) |
 | `d` | Delete Selected Downloads|
 | `b` / `Backsp` | Go Back / Close Panel |
 | `Enter` | Action Menu for Local Files |
+
+#### Download & Conversion
+When downloading a video, the download dialog offers:
+- **Video (Best)** — best video and audio merged.
+- **Audio (Best)** — best audio stream.
+- **Convert to...** — download the best available stream and convert it to MP4, MKV, WEBM, MP3, M4A, OPUS, FLAC, or WAV.
+- **Select Format...** — pick a specific quality before downloading (single videos only).
+
+`Convert to...` is also available for bulk downloads (selected videos or a whole playlist) and for files already in the Local Files panel. Local conversions run through `ffmpeg` and write a new file next to the source without overwriting it.
 
 ## 🎨 Recommended Terminals
 For sharp, pixel-perfect thumbnails:

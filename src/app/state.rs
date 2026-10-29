@@ -40,6 +40,7 @@ pub enum AppAction {
     DeleteLocalFile,
     DeleteSelectedLocalFiles,
     CleanupLocalGarbage,
+    ConvertLocalFiles,
     CancelSelectedDownloads,
     CancelDownload,
     ResumeDownload,
@@ -69,6 +70,19 @@ pub enum AppState {
     Downloads,
     Settings,
     DownloadDialog,
+    ConvertDialog,
+}
+
+#[derive(Debug, Clone)]
+pub enum ConvertContext {
+    Downloads(Vec<Video>),
+    LocalFiles(Vec<std::path::PathBuf>),
+}
+
+#[derive(Debug)]
+pub struct ConvertBatchResult {
+    pub converted: Vec<std::path::PathBuf>,
+    pub failures: Vec<(std::path::PathBuf, String)>,
 }
 
 #[derive(Debug)]

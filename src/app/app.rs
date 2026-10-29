@@ -13,7 +13,7 @@ use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 use crate::tui::components::logo::AnimationMode;
 use crate::tui::components::theme::Theme;
 
-use super::{AppAction, AppState, DownloadControl, DownloadManager, InputMode};
+use super::{AppAction, AppState, ConvertContext, DownloadControl, DownloadManager, InputMode};
 use crate::app::state::DownloadDialogMode;
 use crate::model::settings::Settings;
 
@@ -111,6 +111,16 @@ pub struct App {
     pub download_dialog_mode: DownloadDialogMode,
     pub download_dialog_index: usize,
     pub download_dialog_area: Option<Rect>,
+    // Conversion Dialog
+    pub convert_context: Option<ConvertContext>,
+    pub convert_dialog_index: usize,
+    pub convert_dialog_area: Option<Rect>,
+    pub convert_return_state: AppState,
+    pub convert_tx: UnboundedSender<(
+        Vec<std::path::PathBuf>,
+        crate::model::convert::ConvertTarget,
+    )>,
+    pub convert_event_rx: UnboundedReceiver<crate::app::state::ConvertBatchResult>,
     // Background Download
     pub download_manager: DownloadManager,
     pub new_download_tx: UnboundedSender<(Video, String)>, // Video, FormatID
@@ -761,6 +771,53 @@ impl App {
         });
         abort_handles.push(download_manager_task.abort_handle());
 
+        let (convert_tx, mut convert_cmd_rx) = mpsc::unbounded_channel::<(
+            Vec<std::path::PathBuf>,
+            crate::model::convert::ConvertTarget,
+        )>();
+        let (convert_event_tx, convert_event_rx) = mpsc::unbounded_channel();
+        let task_settings = shared_settings.clone();
+        let convert_task = tokio::spawn(async move {
+            while let Some((paths, target)) = convert_cmd_rx.recv().await {
+                let ffmpeg = task_settings.read().unwrap().ffmpeg_cmd().to_string();
+                let mut converted = Vec::new();
+                let mut failures = Vec::new();
+
+                if !crate::sys::convert::ffmpeg_available(&ffmpeg).await {
+                    for path in paths {
+                        failures.push((
+                            path,
+                            format!(
+                                "ffmpeg not found at '{}'. Install ffmpeg or configure executables.ffmpeg.",
+                                ffmpeg
+                            ),
+                        ));
+                    }
+                } else {
+                    for path in paths {
+                        match crate::sys::convert::convert_file(&path, target, &ffmpeg).await {
+                            Ok(output) => converted.push(output),
+                            Err(e) => {
+                                log::error!("Failed to convert {:?}: {}", path, e);
+                                failures.push((path, e.to_string()));
+                            }
+                        }
+                    }
+                }
+
+                if convert_event_tx
+                    .send(crate::app::state::ConvertBatchResult {
+                        converted,
+                        failures,
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
+        abort_handles.push(convert_task.abort_handle());
+
         let (_, playback_res_rx) = mpsc::unbounded_channel();
         let (terminal_ready_tx, terminal_ready_rx) =
             mpsc::unbounded_channel::<Result<String, String>>();
@@ -891,6 +948,12 @@ impl App {
             download_dialog_mode: crate::app::state::DownloadDialogMode::Single,
             download_dialog_index: 0,
             download_dialog_area: None,
+            convert_context: None,
+            convert_dialog_index: 0,
+            convert_dialog_area: None,
+            convert_return_state: AppState::Results,
+            convert_tx,
+            convert_event_rx,
             download_manager,
             new_download_tx,
             download_event_rx,

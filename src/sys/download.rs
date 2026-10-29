@@ -52,15 +52,32 @@ pub async fn start_download(
 
     let mut cmd = build_base_command(settings);
     cmd.kill_on_drop(true);
-    let format_arg = if format_id == "best" {
-        "bestvideo+bestaudio/best".to_string()
-    } else if format_id == "audio_best" {
-        "bestaudio[ext=m4a]/bestaudio/best".to_string()
+    if let Some(target) = crate::model::convert::ConvertTarget::from_format_id(format_id) {
+        if target.is_audio() {
+            cmd.arg("-f").arg("bestaudio/best");
+            cmd.arg("-x");
+            cmd.arg("--audio-format").arg(target.ext());
+            cmd.arg("--audio-quality").arg("0");
+        } else {
+            cmd.arg("-f").arg("bestvideo+bestaudio/best");
+            cmd.arg("--recode-video").arg(target.ext());
+        }
+        log::info!(
+            "Conversion download requested: {} -> {}",
+            format_id,
+            target.label()
+        );
     } else {
-        format!("{}+bestaudio/best", format_id)
-    };
+        let format_arg = if format_id == "best" {
+            "bestvideo+bestaudio/best".to_string()
+        } else if format_id == "audio_best" {
+            "bestaudio[ext=m4a]/bestaudio/best".to_string()
+        } else {
+            format!("{}+bestaudio/best", format_id)
+        };
+        cmd.arg("-f").arg(format_arg);
+    }
 
-    cmd.arg("-f").arg(format_arg);
     cmd.arg("-P").arg(&download_dir);
     cmd.arg("-o").arg("%(title).150s - %(id)s.%(ext)s");
     cmd.arg("--newline");

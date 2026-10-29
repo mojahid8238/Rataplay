@@ -9,5 +9,7 @@ pub use self::actions::{
 };
 pub use self::app::App;
 pub use self::handlers::{handle_key_event, handle_mouse_event};
-pub use self::state::{Action, AppAction, AppState, DownloadControl, DownloadManager, InputMode};
+pub use self::state::{
+    Action, AppAction, AppState, ConvertContext, DownloadControl, DownloadManager, InputMode,
+};
 pub use self::updates::on_tick;

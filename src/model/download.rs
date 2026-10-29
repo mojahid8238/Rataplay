@@ -32,6 +32,10 @@ pub fn download_task_key(video_id: &str, format_id: &str) -> String {
 }
 
 impl DownloadTask {
+    pub fn format_label(&self) -> Option<&'static str> {
+        crate::model::convert::ConvertTarget::from_format_id(&self.format_id).map(|t| t.label())
+    }
+
     pub fn new(video: Video, format_id: String) -> Self {
         Self {
             id: download_task_key(&video.id, &format_id),

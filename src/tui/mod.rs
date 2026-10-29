@@ -11,6 +11,7 @@ use ratatui_image::picker::Picker;
 
 pub mod components;
 use components::action_menu;
+use components::convert_dialog;
 use components::download_dialog;
 use components::downloads;
 use components::format_selection;
@@ -168,6 +169,13 @@ pub fn ui(f: &mut Frame, app: &mut App, picker: &mut Picker) {
         download_dialog::render_download_dialog(f, app, f.area());
     } else {
         app.download_dialog_area = None;
+    }
+
+    if app.state == AppState::ConvertDialog {
+        app.convert_dialog_area = Some(f.area());
+        convert_dialog::render_convert_dialog(f, app, f.area());
+    } else {
+        app.convert_dialog_area = None;
     }
 }
 
